@@ -9,7 +9,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Dela+Gothic+One&family=Luckiest+Guy&family=Shippori+Mincho+B1:wght@800&family=Zen+Kaku+Gothic+New:wght@400;700&family=Zen+Maru+Gothic:wght@700&family=ZCOOL+KuaiLe&family=ZCOOL+QingKe+HuangYou&family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;700&display=swap">
 <style>
-/* Layout: one centred stage. Row 1 = upload box + payment QR; row 2 = two telephone dials side by side.
+/* Layout: one centred stage. Row 1 = upload box + payment QR; row 2 = two telephone dials side by side, each under its title.
+   Wide screens add a demo video column on the left; narrow screens put the demo last.
    Every colour is a style token; the right dial swaps the token set on <html>, the left dial swaps the line-art layer. */
 @property --bg1    { syntax: "<color>"; inherits: true; initial-value: #bfe6f5; }
 @property --bg2    { syntax: "<color>"; inherits: true; initial-value: #e9f6d6; }
@@ -134,12 +135,36 @@ body {
   position: relative; z-index: 1;
   width: 100%; max-width: 900px; margin: 0 auto; min-height: 100%;
   display: grid; align-content: center; gap: clamp(24px, 5vw, 48px);
+  grid-template-areas: "inputs" "dials" "demo";
   padding-block: clamp(24px, 6vh, 64px);
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(12px, 4vw, 44px); align-items: stretch; }
 .row > * { min-width: 0; }
+.row.inputs { grid-area: inputs; }
+.row.dials { grid-area: dials; align-items: start; }
+@media (min-width: 1000px) {
+  .stage { max-width: 1240px; grid-template-columns: minmax(260px, 330px) 1fr; grid-template-areas: "demo inputs" "demo dials"; column-gap: 48px; }
+}
+
+/* ---------- demo video ---------- */
+.demo { grid-area: demo; margin: 0; padding: 12px; display: grid; gap: 10px; align-self: center; justify-self: center; width: 100%; max-width: 360px; }
+.demo video { display: block; width: 100%; height: auto; aspect-ratio: 600 / 788; max-width: 100%; object-fit: cover; background: #000;
+  border-radius: calc(var(--radius) * .5); border: var(--bw) solid var(--ink); transition: border-color var(--t), border-radius var(--t); }
+.demo figcaption { display: grid; gap: 2px; padding-inline: 4px; }
+.demo figcaption strong { font: 400 18px/1.2 var(--font-display); letter-spacing: var(--disp-track); color: var(--accent); transition: color var(--t); }
+.demo figcaption span { font-size: 12.5px; opacity: .75; }
+
+/* ---------- dial titles ---------- */
+.dial-wrap { display: grid; justify-items: center; gap: 14px; min-width: 0; }
+.dial-title { display: grid; justify-items: center; gap: 4px; text-align: center; padding: 10px 18px 12px; max-width: 100%; }
+.dial-title strong {
+  font: 400 clamp(19px, 2.8vw, 27px)/1.1 var(--font-display); letter-spacing: var(--disp-track); color: var(--ink);
+  background: linear-gradient(transparent 58%, color-mix(in srgb, var(--accent2) 70%, transparent) 58% 92%, transparent 92%);
+  padding-inline: 4px; transition: color var(--t);
+}
+.dial-title span { font-size: clamp(12px, 1.6vw, 14px); font-weight: 700; color: var(--accent); text-wrap: balance; transition: color var(--t); }
 
 /* ---------- rotary dial ---------- */
 .dial { display: grid; place-items: center; outline: none; touch-action: none; }
@@ -155,11 +180,11 @@ body {
 .dial .disc-edge { fill: none; stroke: var(--ink); stroke-width: var(--bw); transition: stroke var(--t); }
 .dial .rim { fill: none; stroke: var(--ink); stroke-width: var(--bw); opacity: .9; }
 .dial .lab { pointer-events: none; }
-.dial .wedge-label { fill: var(--paper); font: 700 12.5px/1 var(--font-body); text-anchor: middle; dominant-baseline: central; transition: fill var(--t); }
+.dial .wedge-label { fill: var(--paper); font: 700 14px/1 var(--font-body); text-anchor: middle; dominant-baseline: central; transition: fill var(--t); }
 .dial .lab.sel .wedge-label { fill: var(--ink); }
 .dial .card { fill: var(--paper); stroke: var(--ink); stroke-width: var(--bw); transition: fill var(--t); }
 .dial .cap { fill: var(--ink); opacity: .6; font: 700 8.5px/1 var(--font-body); letter-spacing: .16em; text-anchor: middle; }
-.dial .val { fill: var(--ink); font-family: var(--font-display); font-size: 15px; letter-spacing: var(--disp-track); text-anchor: middle; transition: opacity .25s; }
+.dial .val { fill: var(--ink); font-family: var(--font-display); font-size: 17px; letter-spacing: var(--disp-track); text-anchor: middle; transition: opacity .25s; }
 .dial .val.fade { opacity: 0; }
 .dial .stop, .dial .stop2 { pointer-events: none; }
 .dial .stop { stroke: #b9bec6; stroke-width: 9; stroke-linecap: round; }
@@ -292,9 +317,20 @@ body {
   </div>
 
   <div class="row dials">
-    <div class="dial" id="themeDial" tabindex="0" role="slider" aria-label="Background theme"></div>
-    <div class="dial" id="styleDial" tabindex="0" role="slider" aria-label="Art style"></div>
+    <div class="dial-wrap">
+      <div class="dial-title surface"><strong id="themeTitle">Background theme</strong><span id="themeHint">Turn to set the scene of your manga</span></div>
+      <div class="dial" id="themeDial" tabindex="0" role="slider" aria-label="Background theme"></div>
+    </div>
+    <div class="dial-wrap">
+      <div class="dial-title surface"><strong id="styleTitle">Art style</strong><span id="styleHint">Turn to choose how your manga is drawn</span></div>
+      <div class="dial" id="styleDial" tabindex="0" role="slider" aria-label="Art style"></div>
+    </div>
   </div>
+
+  <figure class="demo surface">
+    <video id="demoVideo" src="demo/moment-demo.mp4" poster="demo/moment-demo.jpg" muted autoplay loop playsinline preload="metadata" aria-label="Sample: a real game clip on top, the manga we drew from it below"></video>
+    <figcaption><strong id="demoTitle">See it in action</strong><span id="demoText">Top: the uploaded game clip. Bottom: the manga pages we drew from it.</span></figcaption>
+  </figure>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -308,7 +344,9 @@ body {
   const ZH = /^zh/i.test(root.lang);
   const API = ZH ? "../api/" : "api/";      // the Chinese page lives one folder down, at zh/
   const T = ZH ? {
-    title: "那一刻漫画", themeCap: "主 题", styleCap: "画 风", themeAria: "背景主题", styleAria: "画风",
+    title: "那一刻漫画", themeCap: "背景主题", styleCap: "漫画画风",
+    themeHint: "转动选择漫画的场景", styleHint: "转动选择漫画的绘画风格",
+    demoTitle: "效果示例", demoText: "上：用户上传的比赛视频。下：我们据此画出的漫画。", themeAria: "背景主题", styleAria: "画风",
     themes: [["运动"], ["旅行与家居"], ["人像写真"], ["搞笑"]],
     styles: [["宫崎骏"], ["火影忍者"], ["灌篮高手"], ["鬼灭之刃"], ["海贼王"]],
     upBig: "把比赛视频拖到这里", upSmall: "或点击选择 · MP4 / MOV，10–90 秒效果最好",
@@ -323,7 +361,9 @@ body {
     done: url => `漫画已完成。<a href="${url}" target="_blank" rel="noopener">下载 PDF</a>`,
     failed: id => `绘制时出错了。请把订单号 ${id} 发给我们，我们会退款。`,
   } : {
-    title: "Moment Manga", themeCap: "THEME", styleCap: "ART STYLE", themeAria: "Background theme", styleAria: "Art style",
+    title: "Moment Manga", themeCap: "Background theme", styleCap: "Art style",
+    themeHint: "Turn to set the scene of your manga", styleHint: "Turn to choose how your manga is drawn",
+    demoTitle: "See it in action", demoText: "Top: the uploaded game clip. Bottom: the manga pages we drew from it.", themeAria: "Background theme", styleAria: "Art style",
     themes: [["Sports"], ["Travel &", "Home Life"], ["Portrait", "Photos"], ["Comedy"]],
     styles: [["Hayao", "Miyazaki"], ["Naruto"], ["Slam", "Dunk"], ["Demon", "Slayer"], ["One", "Piece"]],
     upBig: "Drop your game clip here", upSmall: "or tap to choose · MP4 or MOV, 10–90 seconds works best",
@@ -339,6 +379,10 @@ body {
     failed: id => `Something went wrong while drawing. Send us order number ${id} and we'll refund you.`,
   };
   document.title = T.title;
+  $("themeTitle").textContent = T.themeCap; $("themeHint").textContent = T.themeHint;
+  $("styleTitle").textContent = T.styleCap; $("styleHint").textContent = T.styleHint;
+  $("demoTitle").textContent = T.demoTitle; $("demoText").textContent = T.demoText;
+  if (ZH) { const v = $("demoVideo"); v.poster = "../demo/moment-demo.jpg"; v.src = "../demo/moment-demo.mp4"; v.setAttribute("aria-label", T.demoText); }
   $("upBig").textContent = T.upBig; $("upSmall").textContent = T.upSmall; $("payLine").textContent = T.payIdle;
 
   /* ---------------- background line art ---------------- */
@@ -422,7 +466,6 @@ body {
           ${rims}${labels}
         </g>
         <circle class="card" r="${R_IN - 2}"/>
-        <text class="cap" y="-22">${caption}</text>
         <text class="val"></text>
         <line class="stop" x1="${s1x}" y1="${s1y}" x2="${s2x}" y2="${s2y}"/>
         <line class="stop2" x1="${s1x}" y1="${s1y}" x2="${s2x}" y2="${s2y}"/>
@@ -447,7 +490,7 @@ body {
       commit(i);
     }
     function show(i, animate) {
-      const paint = () => { val.innerHTML = lines(options[i].full, 8, 16); val.classList.remove("fade"); };
+      const paint = () => { val.innerHTML = lines(options[i].full, 0, 18); val.classList.remove("fade"); };
       if (animate && !reduce) { val.classList.add("fade"); setTimeout(paint, 220); } else paint();
       wedgeEls.forEach(w => w.classList.toggle("sel", +w.dataset.i === i));
       labs.forEach(l => l.classList.toggle("sel", +l.dataset.i === i));
@@ -486,7 +529,7 @@ body {
 
   const THEME_KEYS = ["sports", "travel", "portrait", "comedy"];
   const STYLE_KEYS = ["miyazaki", "naruto", "slamdunk", "demonslayer", "onepiece"];
-  const short = full => ZH ? full : (full.length > 1 && full.join(" ").length <= 9 ? [full.join(" ")] : full);
+  const short = full => full;   // multi-word names wrap so they stay clear of the finger holes
   const themeDial = makeDial($("themeDial"), {
     caption: T.themeCap, aria: T.themeAria, initial: 0, onChange: setTheme,
     options: THEME_KEYS.map((key, i) => ({ key, full: T.themes[i], short: short(T.themes[i]) })),

@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
@@ -15,6 +16,7 @@ WEB = Path(__file__).resolve().parent.parent / "web"
 
 app = FastAPI(title="Moment Manga")
 provider = payments.load()
+app.mount("/demo", StaticFiles(directory=WEB / "demo"), name="demo")
 
 
 @app.on_event("startup")
