@@ -7,9 +7,9 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Dela+Gothic+One&family=Luckiest+Guy&family=Shippori+Mincho+B1:wght@800&family=Zen+Kaku+Gothic+New:wght@400;700&family=Zen+Maru+Gothic:wght@700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Dela+Gothic+One&family=Luckiest+Guy&family=Shippori+Mincho+B1:wght@800&family=Zen+Kaku+Gothic+New:wght@400;700&family=Zen+Maru+Gothic:wght@700&family=ZCOOL+KuaiLe&family=ZCOOL+QingKe+HuangYou&family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;700&display=swap">
 <style>
-/* Layout: one centred stage. Row 1 = two telephone dials side by side; row 2 = upload box + payment QR.
+/* Layout: one centred stage. Row 1 = upload box + payment QR; row 2 = two telephone dials side by side.
    Every colour is a style token; the right dial swaps the token set on <html>, the left dial swaps the line-art layer. */
 @property --bg1    { syntax: "<color>"; inherits: true; initial-value: #bfe6f5; }
 @property --bg2    { syntax: "<color>"; inherits: true; initial-value: #e9f6d6; }
@@ -27,8 +27,8 @@
   --accent: #5fae63; --accent2: #f2b84b; --line: #6f9f82; --plate: #f4ecd8;
   --line-w: 1.5; --line-o: .5;
   --radius: 30px; --bw: 2px; --shadow: 0 14px 34px rgb(60 110 80 / .2);
-  --font-display: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
-  --font-body: "Zen Kaku Gothic New", "PingFang SC", "Hiragino Sans", system-ui, sans-serif;
+  --font-display: "Zen Maru Gothic", "ZCOOL KuaiLe", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+  --font-body: "Zen Kaku Gothic New", "Noto Sans SC", "PingFang SC", "Hiragino Sans", system-ui, sans-serif;
   --disp-track: 0;
   --t: 1.4s cubic-bezier(.4, 0, .2, 1);
 }
@@ -37,28 +37,28 @@
   --accent: #233a8f; --accent2: #ff6a00; --line: #8a3300; --plate: #ffe2b8;
   --line-w: 2.2; --line-o: .42;
   --radius: 14px; --bw: 3px; --shadow: 6px 6px 0 #1d2340;
-  --font-display: "Bangers", "Impact", system-ui, sans-serif; --disp-track: .04em;
+  --font-display: "Bangers", "ZCOOL QingKe HuangYou", "Impact", system-ui, sans-serif; --disp-track: .04em;
 }
 :root[data-style="slamdunk"] {
   --bg1: #ffffff; --bg2: #ececec; --paper: #ffffff; --ink: #111111;
   --accent: #d7262e; --accent2: #111111; --line: #111111; --plate: #f3f0ea;
   --line-w: 2.6; --line-o: .36;
   --radius: 4px; --bw: 3.5px; --shadow: 8px 8px 0 #111111;
-  --font-display: "Dela Gothic One", "Impact", system-ui, sans-serif; --disp-track: 0;
+  --font-display: "Dela Gothic One", "ZCOOL QingKe HuangYou", "Impact", system-ui, sans-serif; --disp-track: 0;
 }
 :root[data-style="demonslayer"] {
   --bg1: #24493e; --bg2: #0d1a16; --paper: #f6efe2; --ink: #1a1614;
   --accent: #b8323c; --accent2: #e8b04a; --line: #a9e0c9; --plate: #efe2c8;
   --line-w: 1.6; --line-o: .45;
   --radius: 10px; --bw: 2.5px; --shadow: 0 0 0 4px #e8b04a, 0 18px 40px rgb(0 0 0 / .45);
-  --font-display: "Shippori Mincho B1", "Songti SC", serif; --disp-track: .02em;
+  --font-display: "Shippori Mincho B1", "Ma Shan Zheng", "Songti SC", serif; --disp-track: .02em;
 }
 :root[data-style="onepiece"] {
   --bg1: #58c8f5; --bg2: #0a6fb3; --paper: #fff1cf; --ink: #3b2412;
   --accent: #e2372f; --accent2: #ffd54f; --line: #eaf6ff; --plate: #f7deaa;
   --line-w: 1.9; --line-o: .55;
   --radius: 22px; --bw: 3px; --shadow: 5px 6px 0 #3b2412;
-  --font-display: "Luckiest Guy", "Impact", system-ui, sans-serif; --disp-track: .03em;
+  --font-display: "Luckiest Guy", "ZCOOL KuaiLe", "Impact", system-ui, sans-serif; --disp-track: .03em;
 }
 
 html {
@@ -147,16 +147,21 @@ body {
 .dial:focus-visible svg .plate { stroke: var(--accent2); stroke-width: 8; }
 .dial .plate { fill: var(--plate); stroke: var(--ink); stroke-width: var(--bw); transition: fill var(--t), stroke var(--t); }
 .dial .tick { fill: var(--ink); opacity: .55; }
-.dial .disc { fill: var(--accent); stroke: var(--ink); stroke-width: var(--bw); transition: fill var(--t), stroke var(--t); }
+.dial .rot { cursor: grab; }
+.dial.grabbing .rot { cursor: grabbing; }
+.dial .wedge { fill: var(--accent); stroke: var(--ink); stroke-width: calc(var(--bw) * .6); transition: fill var(--t), stroke var(--t); }
+.dial .wedge.alt { fill: color-mix(in srgb, var(--accent) 80%, var(--ink)); }
+.dial .wedge.sel { fill: var(--paper); }
+.dial .disc-edge { fill: none; stroke: var(--ink); stroke-width: var(--bw); transition: stroke var(--t); }
 .dial .rim { fill: none; stroke: var(--ink); stroke-width: var(--bw); opacity: .9; }
-.dial .hit { fill: transparent; cursor: grab; }
-.dial .hit:active { cursor: grabbing; }
-.dial .hole-label { fill: var(--ink); font: 700 10.5px/1 var(--font-body); text-anchor: middle; dominant-baseline: central; }
-.dial .hole-label.sel { fill: var(--accent); }
+.dial .lab { pointer-events: none; }
+.dial .wedge-label { fill: var(--paper); font: 700 12.5px/1 var(--font-body); text-anchor: middle; dominant-baseline: central; transition: fill var(--t); }
+.dial .lab.sel .wedge-label { fill: var(--ink); }
 .dial .card { fill: var(--paper); stroke: var(--ink); stroke-width: var(--bw); transition: fill var(--t); }
 .dial .cap { fill: var(--ink); opacity: .6; font: 700 8.5px/1 var(--font-body); letter-spacing: .16em; text-anchor: middle; }
 .dial .val { fill: var(--ink); font-family: var(--font-display); font-size: 15px; letter-spacing: var(--disp-track); text-anchor: middle; transition: opacity .25s; }
 .dial .val.fade { opacity: 0; }
+.dial .stop, .dial .stop2 { pointer-events: none; }
 .dial .stop { stroke: #b9bec6; stroke-width: 9; stroke-linecap: round; }
 .dial .stop2 { stroke: #eef0f3; stroke-width: 3; stroke-linecap: round; }
 
@@ -208,7 +213,7 @@ body {
 .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 
 @media (max-width: 640px) {
-  .row.bottom { grid-template-columns: 1fr; }
+  .row.inputs { grid-template-columns: 1fr; }
   .pay { grid-template-columns: 120px 1fr; }
   .qr { width: 120px; }
 }
@@ -265,12 +270,7 @@ body {
 </svg>
 
 <main class="stage">
-  <div class="row top">
-    <div class="dial" id="themeDial" tabindex="0" role="slider" aria-label="Background theme"></div>
-    <div class="dial" id="styleDial" tabindex="0" role="slider" aria-label="Art style"></div>
-  </div>
-
-  <div class="row bottom">
+  <div class="row inputs">
     <label class="upload surface" id="upload" for="video">
       <input type="file" id="video" name="video" accept="video/*">
       <svg class="film" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="8" width="36" height="32" rx="3"/><path d="M12 8v32M36 8v32M6 16h6M6 24h6M6 32h6M36 16h6M36 24h6M36 32h6M21 18l8 6-8 6z"/></svg>
@@ -290,6 +290,11 @@ body {
       </div>
     </div>
   </div>
+
+  <div class="row dials">
+    <div class="dial" id="themeDial" tabindex="0" role="slider" aria-label="Background theme"></div>
+    <div class="dial" id="styleDial" tabindex="0" role="slider" aria-label="Art style"></div>
+  </div>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -297,6 +302,44 @@ body {
 (() => {
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const root = document.documentElement;
+  const $ = id => document.getElementById(id);
+
+  /* ---------------- language ---------------- */
+  const ZH = /^zh/i.test(root.lang);
+  const API = ZH ? "../api/" : "api/";      // the Chinese page lives one folder down, at zh/
+  const T = ZH ? {
+    title: "那一刻漫画", themeCap: "主 题", styleCap: "画 风", themeAria: "背景主题", styleAria: "画风",
+    themes: [["运动"], ["旅行与家居"], ["人像写真"], ["搞笑"]],
+    styles: [["宫崎骏"], ["火影忍者"], ["灌篮高手"], ["鬼灭之刃"], ["海贼王"]],
+    upBig: "把比赛视频拖到这里", upSmall: "或点击选择 · MP4 / MOV，10–90 秒效果最好",
+    unit: "/ 本", payIdle: "上传视频后，这里会出现付款码。", pages: "3–5 页",
+    methods: { wechat: "微信支付", alipay: "支付宝", card: "银行卡" },
+    ready: "视频已就绪", replace: "点击可更换", seconds: "秒",
+    notVideo: "这不是视频文件，请选择 MP4 或 MOV。",
+    tooBig: (mb, max) => `视频有 ${mb} MB，上限是 ${max} MB，请剪短后再试。`,
+    demo: "预览：这是示例付款码。正式网站会打开微信支付或支付宝。",
+    uploading: "上传中…", uploadFail: "上传失败，请检查网络后重新拖入视频。",
+    scan: "扫码付款，到账后立刻开始绘制。", drawing: "已付款，正在绘制漫画…",
+    done: url => `漫画已完成。<a href="${url}" target="_blank" rel="noopener">下载 PDF</a>`,
+    failed: id => `绘制时出错了。请把订单号 ${id} 发给我们，我们会退款。`,
+  } : {
+    title: "Moment Manga", themeCap: "THEME", styleCap: "ART STYLE", themeAria: "Background theme", styleAria: "Art style",
+    themes: [["Sports"], ["Travel &", "Home Life"], ["Portrait", "Photos"], ["Comedy"]],
+    styles: [["Hayao", "Miyazaki"], ["Naruto"], ["Slam", "Dunk"], ["Demon", "Slayer"], ["One", "Piece"]],
+    upBig: "Drop your game clip here", upSmall: "or tap to choose · MP4 or MOV, 10–90 seconds works best",
+    unit: "per manga", payIdle: "Upload a clip and your payment code appears here.", pages: "3–5 pages",
+    methods: { wechat: "WeChat Pay", alipay: "Alipay", card: "Card" },
+    ready: "Clip ready", replace: "tap to replace", seconds: "s",
+    notVideo: "That file isn't a video. Choose an MP4 or MOV clip.",
+    tooBig: (mb, max) => `That clip is ${mb} MB. The limit is ${max} MB; trim it and try again.`,
+    demo: "Preview: this is a sample code. On the live site it opens WeChat Pay or Alipay.",
+    uploading: "Uploading…", uploadFail: "Upload failed. Check your connection and drop the clip again.",
+    scan: "Scan to pay. We start drawing the moment it clears.", drawing: "Paid. Drawing your manga…",
+    done: url => `Your manga is ready. <a href="${url}" target="_blank" rel="noopener">Download the PDF</a>`,
+    failed: id => `Something went wrong while drawing. Send us order number ${id} and we'll refund you.`,
+  };
+  document.title = T.title;
+  $("upBig").textContent = T.upBig; $("upSmall").textContent = T.upSmall; $("payLine").textContent = T.payIdle;
 
   /* ---------------- background line art ---------------- */
   const MOTIFS = {
@@ -305,7 +348,7 @@ body {
     portrait: ["camera", "frame", "face", "flower", "sparkle", "film"],
     comedy:   ["bubble", "laugh", "burst", "banana", "pie", "sweat"],
   };
-  const art = document.getElementById("art");
+  const art = $("art");
   const NS = "http://www.w3.org/2000/svg";
   function rand(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
   function drawArt() {
@@ -340,139 +383,138 @@ body {
   }
   function setStyle(key) { root.dataset.style = key; updateMeta(); }
 
-  /* ---------------- rotary dial ---------------- */
-  const STOP = 128, FIRST = 48;          // finger stop angle, gap before the first hole (degrees clockwise from 12 o'clock)
-  const polar = (r, a) => { const t = a * Math.PI / 180; return [r * Math.sin(t), -r * Math.cos(t)]; };
-  const ease = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
-  const easeBack = k => 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2);
-  const lines = (arr, x, y, lh) => arr.map((s, i) =>
-    `<tspan x="${x}" y="${(y + (i - (arr.length - 1) / 2) * lh).toFixed(1)}">${s}</tspan>`).join("");
+  /* ---------------- rotary dial ----------------
+     The options split the whole dial face into equal wedges, each with a finger hole.
+     Turning the dial brings a wedge to the finger stop, and the dial stays there. */
+  const STOP = 135;                      // finger stop, degrees clockwise from 12 o'clock
+  const R_OUT = 134, R_IN = 54, R_HOLE = 117, R_LABEL = 84;
+  const polar = (r, a) => { const t = a * Math.PI / 180; return [+(r * Math.sin(t)).toFixed(2), +(-r * Math.cos(t)).toFixed(2)]; };
+  const ease = k => 1 - Math.pow(1 - k, 3) * (1 - 1.6 * k * (1 - k));      // ease-out with a small settle
+  const wrap = d => ((d % 360) + 540) % 360 - 180;                          // shortest signed turn
+  const lines = (arr, y, lh) => arr.map((s, i) =>
+    `<tspan x="0" y="${(y + (i - (arr.length - 1) / 2) * lh).toFixed(1)}">${s}</tspan>`).join("");
 
-  function makeDial(el, { caption, options, step, holeR, initial, onChange }) {
-    const holes = options.map((o, i) => ({ ...o, a: STOP - FIRST - i * step, d: FIRST + i * step }));
-    const uid = el.id;
-    let plate = "", mask = "", rims = "", hits = "";
-    holes.forEach((h, i) => {
-      const [x, y] = polar(94, h.a);
-      plate += `<text class="hole-label" data-i="${i}">${lines(h.short, x.toFixed(1), y, 12)}</text>`;
-      mask += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${holeR}" fill="#000"/>`;
-      rims += `<circle class="rim" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${holeR}"/>`;
-      hits += `<circle class="hit" data-i="${i}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${holeR}"/>`;
+  function makeDial(el, { caption, aria, options, initial, onChange }) {
+    const N = options.length, step = 360 / N, uid = el.id, holeR = N > 4 ? 13.5 : 15;
+    let wedges = "", mask = "", rims = "", labels = "";
+    options.forEach((o, i) => {
+      const a = i * step, a0 = a - step / 2, a1 = a + step / 2;
+      const [ox0, oy0] = polar(R_OUT, a0), [ox1, oy1] = polar(R_OUT, a1), [ix1, iy1] = polar(R_IN, a1), [ix0, iy0] = polar(R_IN, a0);
+      wedges += `<path class="wedge${i % 2 ? " alt" : ""}" data-i="${i}" d="M${ix0} ${iy0}L${ox0} ${oy0}A${R_OUT} ${R_OUT} 0 0 1 ${ox1} ${oy1}L${ix1} ${iy1}A${R_IN} ${R_IN} 0 0 0 ${ix0} ${iy0}Z"/>`;
+      const [hx, hy] = polar(R_HOLE, a + step * .3);   // finger hole sits near the rim, beside the label
+      mask += `<circle cx="${hx}" cy="${hy}" r="${holeR}" fill="#000"/>`;
+      rims += `<circle class="rim" cx="${hx}" cy="${hy}" r="${holeR}"/>`;
+      const [lx, ly] = polar(R_LABEL, a);
+      labels += `<g class="lab" data-i="${i}" data-x="${lx}" data-y="${ly}"><text class="wedge-label">${lines(o.short, 0, 13)}</text></g>`;
     });
     let ticks = "";
-    for (let a = 0; a < 360; a += 6) { const [x, y] = polar(141, a); ticks += `<circle class="tick" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${a % 30 ? .9 : 1.8}"/>`; }
-    const [s1x, s1y] = polar(118, STOP + 13), [s2x, s2y] = polar(150, STOP + 13);
+    for (let a = 0; a < 360; a += 6) { const [x, y] = polar(142, a); ticks += `<circle class="tick" cx="${x}" cy="${y}" r="${a % 30 ? .9 : 1.8}"/>`; }
+    const [s1x, s1y] = polar(120, STOP), [s2x, s2y] = polar(152, STOP);
+    el.setAttribute("aria-label", aria);
     el.innerHTML = `
       <svg viewBox="-160 -160 320 320" aria-hidden="true">
         <defs><mask id="${uid}-m" maskUnits="userSpaceOnUse" x="-160" y="-160" width="320" height="320">
-          <circle r="134" fill="#fff"/>${mask}</mask></defs>
+          <circle r="${R_OUT + 1}" fill="#fff"/>${mask}</mask></defs>
         <circle class="plate" r="150"/>${ticks}
-        ${plate}
         <g class="rot">
-          <circle class="disc" r="134" mask="url(#${uid}-m)"/>
-          ${rims}${hits}
+          <g mask="url(#${uid}-m)">${wedges}</g>
+          <circle class="disc-edge" r="${R_OUT}"/>
+          ${rims}${labels}
         </g>
-        <circle class="card" r="52"/>
+        <circle class="card" r="${R_IN - 2}"/>
         <text class="cap" y="-22">${caption}</text>
         <text class="val"></text>
         <line class="stop" x1="${s1x}" y1="${s1y}" x2="${s2x}" y2="${s2y}"/>
         <line class="stop2" x1="${s1x}" y1="${s1y}" x2="${s2x}" y2="${s2y}"/>
       </svg>`;
     const svg = el.querySelector("svg"), rot = el.querySelector(".rot"), val = el.querySelector(".val");
-    let angle = 0, busy = false, sel = initial;
+    const labs = [...el.querySelectorAll(".lab")], wedgeEls = [...el.querySelectorAll(".wedge")];
+    let angle = 0, sel = initial, anim = 0;
 
-    const setAngle = a => { angle = a; rot.setAttribute("transform", `rotate(${a.toFixed(2)})`); };
-    const tween = (to, ms, fn) => new Promise(done => {
-      const from = angle, t0 = performance.now();
-      if (reduce) ms = 1;
-      const f = t => { const k = Math.min(1, (t - t0) / ms); setAngle(from + (to - from) * fn(k)); k < 1 ? requestAnimationFrame(f) : done(); };
+    function setAngle(a) {
+      angle = a;
+      rot.setAttribute("transform", `rotate(${a.toFixed(2)})`);
+      // keep every label upright while the disc turns
+      labs.forEach(l => l.setAttribute("transform", `translate(${l.dataset.x} ${l.dataset.y}) rotate(${(-a).toFixed(2)})`));
+    }
+    const restFor = i => STOP - i * step;
+    const nearest = () => ((Math.round((STOP - angle) / step) % N) + N) % N;
+    function turnTo(i) {
+      const from = angle, to = angle + wrap(restFor(i) - angle), ms = reduce ? 1 : 260 + Math.abs(to - from) * 3.2;
+      const t0 = performance.now(), id = ++anim;
+      const f = t => { if (id !== anim) return; const k = Math.min(1, (t - t0) / ms); setAngle(from + (to - from) * ease(k)); if (k < 1) requestAnimationFrame(f); };
       requestAnimationFrame(f);
-    });
+      commit(i);
+    }
     function show(i, animate) {
-      const h = holes[i];
-      const paint = () => { val.innerHTML = lines(h.full, 0, 8, 16); val.classList.remove("fade"); };
+      const paint = () => { val.innerHTML = lines(options[i].full, 8, 16); val.classList.remove("fade"); };
       if (animate && !reduce) { val.classList.add("fade"); setTimeout(paint, 220); } else paint();
-      el.querySelectorAll(".hole-label").forEach(t => t.classList.toggle("sel", +t.dataset.i === i));
+      wedgeEls.forEach(w => w.classList.toggle("sel", +w.dataset.i === i));
+      labs.forEach(l => l.classList.toggle("sel", +l.dataset.i === i));
       el.setAttribute("aria-valuenow", i);
-      el.setAttribute("aria-valuetext", h.full.join(" "));
+      el.setAttribute("aria-valuetext", options[i].full.join(" "));
     }
-    function commit(i) { if (i === sel) return; sel = i; show(i, true); onChange(holes[i].key); }
-    async function release() { await tween(0, 260 + angle * 3.4, easeBack); busy = false; }
-    async function dialTo(i) {
-      if (busy) return; busy = true;
-      await tween(holes[i].d, 220 + holes[i].d * 2.4, ease);
-      commit(i); await release();
-    }
+    function commit(i) { if (i === sel) return; sel = i; show(i, true); onChange(options[i].key); }
 
-    // drag a hole to the finger stop, like a real phone
+    // drag the disc anywhere; on release it settles on the nearest option and stays there
     const pointerAngle = e => { const b = svg.getBoundingClientRect();
       return Math.atan2(e.clientX - (b.left + b.width / 2), -(e.clientY - (b.top + b.height / 2))) * 180 / Math.PI; };
     let drag = null;
-    svg.addEventListener("pointerdown", e => {
-      const hit = e.target.closest(".hit"); if (!hit || busy) return;
-      e.preventDefault(); svg.setPointerCapture(e.pointerId);
-      busy = true; drag = { i: +hit.dataset.i, last: pointerAngle(e), total: 0, moved: 0 };
+    rot.addEventListener("pointerdown", e => {
+      e.preventDefault(); svg.setPointerCapture(e.pointerId); anim++;
+      const w = e.target.closest("[data-i]");
+      drag = { last: pointerAngle(e), moved: 0, i: w ? +w.dataset.i : null };
+      el.classList.add("grabbing");
     });
     svg.addEventListener("pointermove", e => {
       if (!drag) return;
-      const a = pointerAngle(e); let d = a - drag.last; d = ((d + 540) % 360) - 180; drag.last = a;
-      drag.total = Math.max(0, Math.min(holes[drag.i].d, drag.total + d)); drag.moved += Math.abs(d);
-      setAngle(drag.total);
-      if (drag.total >= holes[drag.i].d - 1.5) { const i = drag.i; drag = null; commit(i); release(); }
+      const a = pointerAngle(e), d = wrap(a - drag.last); drag.last = a; drag.moved += Math.abs(d);
+      setAngle(angle + d);
     });
-    const end = () => { if (!drag) return; const { i, moved } = drag; drag = null;
-      if (moved < 6) { busy = false; dialTo(i); } else release(); };
+    const end = () => { if (!drag) return; const { moved, i } = drag; drag = null; el.classList.remove("grabbing");
+      turnTo(moved < 4 && i !== null ? i : nearest()); };
     svg.addEventListener("pointerup", end); svg.addEventListener("pointercancel", end);
 
-    el.setAttribute("aria-valuemin", 0); el.setAttribute("aria-valuemax", holes.length - 1);
+    el.setAttribute("aria-valuemin", 0); el.setAttribute("aria-valuemax", N - 1);
     el.addEventListener("keydown", e => {
       const k = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[e.key]; if (!k) return;
-      e.preventDefault(); dialTo((sel + k + holes.length) % holes.length);
+      e.preventDefault(); turnTo((sel + k + N) % N);
     });
-    show(sel, false);
-    return { get value() { return holes[sel]; } };
+    setAngle(restFor(sel)); show(sel, false);
+    return { get value() { return options[sel]; } };
   }
 
-  const themeDial = makeDial(document.getElementById("themeDial"), {
-    caption: "THEME", step: 62, holeR: 30, initial: 0, onChange: setTheme,
-    options: [
-      { key: "sports",   short: ["Sports"],            full: ["Sports"] },
-      { key: "travel",   short: ["Travel", "& Home"],  full: ["Travel &", "Home Life"] },
-      { key: "portrait", short: ["Portrait"],          full: ["Portrait", "Photos"] },
-      { key: "comedy",   short: ["Comedy"],            full: ["Comedy"] },
-    ],
+  const THEME_KEYS = ["sports", "travel", "portrait", "comedy"];
+  const STYLE_KEYS = ["miyazaki", "naruto", "slamdunk", "demonslayer", "onepiece"];
+  const short = full => ZH ? full : (full.length > 1 && full.join(" ").length <= 9 ? [full.join(" ")] : full);
+  const themeDial = makeDial($("themeDial"), {
+    caption: T.themeCap, aria: T.themeAria, initial: 0, onChange: setTheme,
+    options: THEME_KEYS.map((key, i) => ({ key, full: T.themes[i], short: short(T.themes[i]) })),
   });
-  const styleDial = makeDial(document.getElementById("styleDial"), {
-    caption: "ART STYLE", step: 52, holeR: 27, initial: 0, onChange: setStyle,
-    options: [
-      { key: "miyazaki",    short: ["Miyazaki"],        full: ["Hayao", "Miyazaki"] },
-      { key: "naruto",      short: ["Naruto"],          full: ["Naruto"] },
-      { key: "slamdunk",    short: ["Slam", "Dunk"],    full: ["Slam", "Dunk"] },
-      { key: "demonslayer", short: ["Demon", "Slayer"], full: ["Demon", "Slayer"] },
-      { key: "onepiece",    short: ["One", "Piece"],    full: ["One", "Piece"] },
-    ],
+  const styleDial = makeDial($("styleDial"), {
+    caption: T.styleCap, aria: T.styleAria, initial: 0, onChange: setStyle,
+    options: STYLE_KEYS.map((key, i) => ({ key, full: T.styles[i], short: short(T.styles[i]) })),
   });
   requestAnimationFrame(() => setTheme("sports"));
 
   /* ---------------- upload + payment ---------------- */
-  const $ = id => document.getElementById(id);
   const upload = $("upload"), input = $("video"), qr = $("qr");
   let config = null, order = null, poll = null;
   const sample = { price: "¥39", methods: ["wechat", "alipay"] };
-
-  fetch("api/config").then(r => r.ok ? r.json() : null).then(c => { if (c) { config = c; paintPrice(); } }).catch(() => {});
+  paintPrice();
+  fetch(API + "config").then(r => r.ok ? r.json() : null).then(c => { if (c) { config = c; paintPrice(); } }).catch(() => {});
 
   function paintPrice() {
     const c = config || sample;
-    $("price").innerHTML = `${c.price}<small>per manga</small>`;
-    const names = { wechat: ["wx", "WeChat Pay"], alipay: ["ali", "Alipay"], card: ["card", "Card"] };
-    $("methods").innerHTML = c.methods.map(m => `<span class="chip ${names[m][0]}">${names[m][1]}</span>`).join("");
+    $("price").innerHTML = `${c.price}<small>${T.unit}</small>`;
+    const cls = { wechat: "wx", alipay: "ali", card: "card" };
+    $("methods").innerHTML = c.methods.map(m => `<span class="chip ${cls[m]}">${T.methods[m]}</span>`).join("");
   }
   function updateMeta() {
-    const t = themeDial?.value?.full.join(" "), s = styleDial?.value?.full.join(" ");
-    if (t && s) $("payMeta").textContent = `3–5 pages · ${t} · ${s}`;
+    const t = themeDial?.value?.full.join(ZH ? "" : " "), s = styleDial?.value?.full.join(ZH ? "" : " ");
+    if (t && s) $("payMeta").textContent = `${T.pages} · ${t} · ${s}`;
     if (order && config && order.status === "unpaid")
-      fetch(`api/orders/${order.id}/options`, { method: "POST", headers: { "Content-Type": "application/json" },
+      fetch(`${API}orders/${order.id}/options`, { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theme: themeDial.value.key, style: styleDial.value.key }) }).catch(() => {});
   }
   function showQR(text) {
@@ -488,57 +530,58 @@ body {
   input.addEventListener("change", () => { const f = input.files[0]; if (f) take(f); });
 
   function take(file) {
-    if (!file.type.startsWith("video/")) { $("upSmall").textContent = "That file isn't a video. Choose an MP4 or MOV clip."; return; }
+    if (!file.type.startsWith("video/")) { $("upSmall").textContent = T.notVideo; return; }
     const maxMb = config?.max_upload_mb || 300;
-    if (file.size > maxMb * 1048576) { $("upSmall").textContent = `That clip is ${(file.size / 1048576).toFixed(0)} MB. The limit is ${maxMb} MB; trim it and try again.`; return; }
+    if (file.size > maxMb * 1048576) { $("upSmall").textContent = T.tooBig((file.size / 1048576).toFixed(0), maxMb); return; }
     const v = document.createElement("video");
     v.muted = true; v.playsInline = true; v.loop = true; v.autoplay = true; v.src = URL.createObjectURL(file);
     upload.querySelector(".film, video").replaceWith(v);
-    $("upBig").textContent = "Clip ready";
+    $("upBig").textContent = T.ready;
     $("upSmall").innerHTML = `<span class="file"></span>`;
-    v.addEventListener("loadedmetadata", () => {
-      $("upSmall").firstChild.textContent = `${file.name} · ${Math.round(v.duration)} s · tap to replace`;
-    });
     $("upSmall").firstChild.textContent = file.name;
+    v.addEventListener("loadedmetadata", () => {
+      $("upSmall").firstChild.textContent = `${file.name} · ${Math.round(v.duration)} ${T.seconds} · ${T.replace}`;
+    });
     config ? send(file) : demo();
   }
 
   function demo() {
     showQR("MOMENT-MANGA PREVIEW ORDER · no payment is taken");
-    line("Preview: this is a sample code. On the live site it opens WeChat Pay or Alipay.");
+    line(T.demo);
   }
 
   function send(file) {
     clearInterval(poll);
-    line(`Uploading… <span class="bar"><i id="upBar"></i></span>`);
+    line(`${T.uploading} <span class="bar"><i id="upBar"></i></span>`);
     const fd = new FormData();
     fd.append("video", file); fd.append("theme", themeDial.value.key); fd.append("style", styleDial.value.key);
+    fd.append("lang", ZH ? "zh" : "en");
     const x = new XMLHttpRequest();
-    x.open("POST", "api/orders");
+    x.open("POST", API + "orders");
     x.upload.onprogress = e => { const b = $("upBar"); if (b && e.lengthComputable) b.style.width = (100 * e.loaded / e.total) + "%"; };
     x.onload = () => {
-      if (x.status !== 200) { line(`Upload failed (${x.status}). Check your connection and drop the clip again.`); return; }
+      if (x.status !== 200) { line(`${T.uploadFail} (${x.status})`); return; }
       order = JSON.parse(x.responseText);
       showQR(order.pay_url);
-      line("Scan to pay. We start drawing the moment it clears.");
+      line(T.scan);
       poll = setInterval(check, 3000);
     };
-    x.onerror = () => line("Upload failed. Check your connection and drop the clip again.");
+    x.onerror = () => line(T.uploadFail);
     x.send(fd);
   }
 
   async function check() {
-    let s; try { s = await (await fetch(`api/orders/${order.id}`)).json(); } catch { return; }
+    let s; try { s = await (await fetch(`${API}orders/${order.id}`)).json(); } catch { return; }
     order.status = s.status;
     if (s.status === "paid" || s.status === "processing") {
       qr.innerHTML = `<svg viewBox="0 0 48 48" width="70%" fill="none" stroke="#1aad19" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 25l9 9 19-20"/></svg>`;
-      line(`Paid. Drawing your manga… <span class="bar"><i style="width:${s.progress || 5}%"></i></span>`);
+      line(`${T.drawing} <span class="bar"><i style="width:${s.progress || 5}%"></i></span>`);
     } else if (s.status === "done") {
       clearInterval(poll);
-      line(`Your manga is ready. <a href="${s.result_url}" target="_blank" rel="noopener">Download the PDF</a>`);
+      line(T.done(s.result_url));
     } else if (s.status === "failed") {
       clearInterval(poll);
-      line(`Something went wrong while drawing. Send us order number ${order.id} and we'll refund you.`);
+      line(T.failed(order.id));
     }
   }
 })();

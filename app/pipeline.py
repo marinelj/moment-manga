@@ -55,11 +55,11 @@ def extract_frames(video: Path, out: Path, max_frames: int = 36) -> list[Path]:
     return sorted(out.glob("f_*.jpg"))
 
 
-def storyboard(client, frames: list[Path], theme: str) -> dict:
+def storyboard(client, frames: list[Path], theme: str, lang: str) -> dict:
     from google.genai import types
     prompt = f"""You are a manga editor. These {len(frames)} frames come from one short video, in order (frame 0 first).
 Plan a 3 to 5 page manga telling {THEME_TONE[theme]}, using only what actually happens in the frames.
-Each page has 3 or 4 panels. Write captions and sound effects in {settings.MANGA_LANG}; keep each caption under 20 characters.
+Each page has 3 or 4 panels. Write captions and sound effects in {lang}; keep each caption under 20 characters.
 Return JSON: {{"title": str, "pages": [{{"panels": [{{"frame": int, "shot": "wide|medium|close-up",
 "description": str (what to draw, in English), "caption": str or "", "sfx": str or ""}}]}}]}}"""
     parts = [prompt] + [Image.open(f) for f in frames]
@@ -126,7 +126,8 @@ def run(order: dict, progress=lambda p: None) -> Path:
     frames = extract_frames(Path(order["video"]), work / "frames")
     progress(8)
     client = _client()
-    plan = storyboard(client, frames, order["theme"])
+    lang = "Simplified Chinese" if order.get("lang") == "zh" else "English"
+    plan = storyboard(client, frames, order["theme"], lang)
     progress(15)
     total = sum(len(p["panels"]) for p in plan["pages"])
     done, pages = 0, []

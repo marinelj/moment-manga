@@ -27,13 +27,19 @@ def index():
     return FileResponse(WEB / "index.html")
 
 
+@app.get("/zh/", response_class=HTMLResponse)
+def index_zh():
+    return HTMLResponse((WEB / "index.html").read_text(encoding="utf-8").replace('<html lang="en"', '<html lang="zh-CN"', 1))
+
+
 @app.get("/api/config")
 def config():
     return {"price": settings.PRICE_LABEL, "methods": provider.methods, "max_upload_mb": settings.MAX_UPLOAD_MB}
 
 
 @app.post("/api/orders")
-async def create_order(video: UploadFile = File(...), theme: str = Form(...), style: str = Form(...)):
+async def create_order(video: UploadFile = File(...), theme: str = Form(...), style: str = Form(...),
+                       lang: str = Form("en")):
     if theme not in THEMES or style not in STYLES:
         raise HTTPException(400, "Unknown theme or style")
     if not (video.content_type or "").startswith("video/"):
@@ -49,7 +55,7 @@ async def create_order(video: UploadFile = File(...), theme: str = Form(...), st
                 out.close(); tmp.unlink(missing_ok=True)
                 raise HTTPException(413, f"Video is larger than {settings.MAX_UPLOAD_MB} MB")
             out.write(chunk)
-    order = db.create(theme, style, "")
+    order = db.create(theme, style, "", "zh" if lang == "zh" else "en")
     path = uploads / f"{order['id']}{Path(video.filename or '').suffix[:6] or '.mp4'}"
     shutil.move(tmp, path)
     pay_url, ref = provider.create(order)

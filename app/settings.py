@@ -21,7 +21,6 @@ PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", "demo")
 GEMINI_API_KEY = env("GEMINI_API_KEY")
 GEMINI_TEXT_MODEL = env("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
 GEMINI_IMAGE_MODEL = env("GEMINI_IMAGE_MODEL", "gemini-3-pro-image")
-MANGA_LANG = env("MANGA_LANG", "Simplified Chinese")
 FONT_PATH = env("FONT_PATH", "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)

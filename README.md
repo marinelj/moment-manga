@@ -2,7 +2,7 @@
 
 Upload a short video, pick a theme and an art style on two telephone dials, pay by QR code, and get back a 3–5 page Japanese-style manga as a PDF.
 
-The whole site is one page with four controls: two rotary dials, a video upload box and a payment QR area.
+The whole site is one page with four controls, in English at `/` and Chinese at `/zh/`: two rotary dials, a video upload box and a payment QR area.
 
 - Left dial (Sports, Travel & Home Life, Portrait Photos, Comedy) swaps the line-art background.
 - Right dial (Hayao Miyazaki, Naruto, Slam Dunk, Demon Slayer, One Piece) restyles the whole page and sets the art style of the manga.

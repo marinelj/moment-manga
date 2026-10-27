@@ -19,14 +19,18 @@ CREATE TABLE IF NOT EXISTS orders (
   provider TEXT, provider_ref TEXT, pay_url TEXT,
   result TEXT, error TEXT
 )""")
+try:
+    _conn.execute("ALTER TABLE orders ADD COLUMN lang TEXT DEFAULT 'en'")
+except sqlite3.OperationalError:
+    pass  # column already there
 _conn.commit()
 
 
-def create(theme: str, style: str, video: str) -> dict:
+def create(theme: str, style: str, video: str, lang: str = "en") -> dict:
     oid = uuid.uuid4().hex     # unguessable; also acts as the download capability
     with _lock:
-        _conn.execute("INSERT INTO orders (id, created, theme, style, video, status) VALUES (?,?,?,?,?, 'unpaid')",
-                      (oid, time.time(), theme, style, video))
+        _conn.execute("INSERT INTO orders (id, created, theme, style, video, lang, status) VALUES (?,?,?,?,?,?, 'unpaid')",
+                      (oid, time.time(), theme, style, video, lang))
         _conn.commit()
     return get(oid)
 
