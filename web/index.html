@@ -328,7 +328,7 @@ body {
   </div>
 
   <figure class="demo surface">
-    <video id="demoVideo" src="demo/moment-demo.mp4" poster="demo/moment-demo.jpg" muted autoplay loop playsinline preload="metadata" aria-label="Sample: a real game clip on top, the manga we drew from it below"></video>
+    <video id="demoVideo" src="demo/moment-demo.mp4?v=2" poster="demo/moment-demo.jpg?v=2" muted autoplay loop playsinline preload="metadata" aria-label="Sample: a real game clip on top, the manga we drew from it below"></video>
     <figcaption><strong id="demoTitle">See it in action</strong><span id="demoText">Top: the uploaded game clip. Bottom: the manga pages we drew from it.</span></figcaption>
   </figure>
 </main>
@@ -382,7 +382,7 @@ body {
   $("themeTitle").textContent = T.themeCap; $("themeHint").textContent = T.themeHint;
   $("styleTitle").textContent = T.styleCap; $("styleHint").textContent = T.styleHint;
   $("demoTitle").textContent = T.demoTitle; $("demoText").textContent = T.demoText;
-  if (ZH) { const v = $("demoVideo"); v.poster = "../demo/moment-demo.jpg"; v.src = "../demo/moment-demo.mp4"; v.setAttribute("aria-label", T.demoText); }
+  if (ZH) { const v = $("demoVideo"); v.poster = "../demo/moment-demo.jpg?v=2"; v.src = "../demo/moment-demo.mp4?v=2"; v.setAttribute("aria-label", T.demoText); }
   $("upBig").textContent = T.upBig; $("upSmall").textContent = T.upSmall; $("payLine").textContent = T.payIdle;
 
   /* ---------------- background line art ---------------- */
