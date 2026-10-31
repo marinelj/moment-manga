@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900">
+<defs><pattern id="dots" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#222"/></pattern><pattern id="stripe" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)"><path d="M0 0v9" stroke="#151515" stroke-width="2"/></pattern></defs>
+<rect width="600" height="900" fill="#f6f3ea"/><rect x="24" y="24" width="552" height="852" fill="none" stroke="#151515" stroke-width="8"/>
+<path d="M24 280h552M300 280v310M24 590h552" stroke="#151515" stroke-width="8"/>
+<path d="M37 38h525v230H37z" fill="url(#stripe)" opacity=".2"/><path d="M40 258 300 35M95 258 360 35M160 258 420 35M235 258 485 35M310 258 550 35" stroke="#151515" stroke-width="3"/>
+<path d="M79 252q58-120 164-123 42 13 77 71l65-27 43 65" fill="#f6f3ea" stroke="#151515" stroke-width="8"/><path d="M126 161q23-35 56-30M219 140q26 0 43 27" fill="none" stroke="#151515" stroke-width="7"/><circle cx="430" cy="98" r="50" fill="#f6f3ea" stroke="#151515" stroke-width="7"/><path d="M382 98h96M430 48v100M399 67q45 34 0 65M461 67q-45 34 0 65" fill="none" stroke="#151515" stroke-width="4"/>
+<path d="M37 292h250v287H37z" fill="url(#dots)" opacity=".14"/><path d="M84 564q-4-107 59-160 69-36 110 35v125" fill="#f6f3ea" stroke="#151515" stroke-width="8"/><path d="M106 426q51-54 126-8M127 466l31-5m39 0 29 8M160 514q29 21 55-4" fill="none" stroke="#151515" stroke-width="7"/>
+<path d="M314 306h225M314 333h175M314 360h213" stroke="#151515" stroke-width="5"/><text x="337" y="500" font-family="Impact,sans-serif" font-weight="900" font-size="95" fill="#151515" transform="rotate(-8 337 500)">DUNK!</text>
+<path d="M39 603h523v262H39z" fill="url(#dots)" opacity=".17"/><path d="M57 843q75-175 205-180 139 14 267 180" fill="#f6f3ea" stroke="#151515" stroke-width="8"/><path d="M145 722q64-35 140-9M318 716q59-35 113 8M58 838h483" fill="none" stroke="#151515" stroke-width="5"/><text x="389" y="841" font-family="Arial,sans-serif" font-weight="900" font-size="18" letter-spacing="2">SAMPLE / 02</text>
+</svg>

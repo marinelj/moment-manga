@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900">
+<defs><pattern id="dots" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="#2b2b2b"/></pattern><pattern id="lines" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(25)"><path d="M0 0v12" stroke="#1b1b1b" stroke-width="2"/></pattern></defs>
+<rect width="600" height="900" fill="#f6f3ea"/><rect x="24" y="24" width="552" height="852" fill="none" stroke="#151515" stroke-width="8"/>
+<path d="M24 380h552M24 640h552M330 380v260M210 640v236" stroke="#151515" stroke-width="8"/>
+<path d="M24 24h552v356H24z" fill="url(#dots)" opacity=".17"/>
+<path d="M35 340 220 40M80 365 280 40M135 370 345 40M205 370 410 40M275 370 475 40M350 370 555 40" stroke="#171717" stroke-width="3" opacity=".65"/>
+<path d="M420 315c-65-18-90-80-65-134 18-41 66-50 107-25 28 17 43 56 31 95-12 38-41 59-73 64Z" fill="#f6f3ea" stroke="#151515" stroke-width="7"/>
+<path d="M380 160q40-60 100 2M377 175q57-38 119 18M391 228l20-5m55 4 18 7M418 268q20 13 41-1" fill="none" stroke="#151515" stroke-width="7"/>
+<path d="M350 308q-62 5-93 72h260q-22-65-80-73" fill="url(#lines)" stroke="#151515" stroke-width="7"/>
+<circle cx="142" cy="195" r="64" fill="#f6f3ea" stroke="#151515" stroke-width="8"/><path d="M80 195h124M142 132v125M97 148q56 44 0 99M187 148q-56 44 0 99" fill="none" stroke="#151515" stroke-width="5"/>
+<path d="M43 400h267v220H43z" fill="url(#dots)" opacity=".22"/><path d="M70 594q40-135 90-135 44 0 77 135M101 482q22-24 46-6M166 476q26-20 48 3" fill="#f6f3ea" stroke="#151515" stroke-width="7"/>
+<path d="M351 406h195M351 429h145M351 453h172" stroke="#151515" stroke-width="5"/><text x="360" y="574" font-family="Impact, sans-serif" font-size="75" font-weight="900" fill="#151515" transform="rotate(-10 360 574)">SWISH!</text>
+<path d="M36 667h156v193H36z" fill="url(#lines)" opacity=".2"/><path d="M54 831q28-101 77-107 38 8 53 107" fill="#f6f3ea" stroke="#151515" stroke-width="7"/>
+<path d="M245 670h294M245 700h230M245 730h264M245 760h194" stroke="#151515" stroke-width="6"/><text x="248" y="838" font-family="Arial,sans-serif" font-weight="900" font-size="21" letter-spacing="3">PAGE 01 / SAMPLE</text>
+</svg>

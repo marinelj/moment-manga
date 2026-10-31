@@ -1,5 +1,5 @@
 # Publishes web/index.html to GitHub Pages as a preview.
-# With no backend behind it, the page runs in preview mode and shows a sample QR code.
+# With no backend behind it, the page runs in demo mode without checkout.
 # One-time setup: Settings → Pages → Source: GitHub Actions.
 name: Pages preview
 

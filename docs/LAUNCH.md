@@ -1,62 +1,27 @@
-# Launch plan
+# Launch guide
 
-## 1. Where to host
+## Host the application
 
-**Recommendation: one small cloud server in Singapore (or Tokyo), running `docker compose`.**
+Run the FastAPI server and its worker on a host that can reach the configured Gemini API and the Alipay gateway. The included `Dockerfile` installs Python 3.12, `ffmpeg`, and CJK fonts. `docker-compose.yml` runs one application container and a Caddy HTTPS proxy; the worker and SQLite store are designed for one application instance.
 
-Why this shape:
+```bash
+cp .env.example .env
+# Fill .env with server-only secrets, an approved CNY amount, and your HTTPS domain.
+docker compose up -d --build
+```
 
-- **The Gemini API is not available from mainland China or Hong Kong.** The server that calls it must sit in a supported region. Singapore and Tokyo are the closest to Chinese users.
-- **A server outside mainland China needs no ICP filing (备案).** A mainland server does, and the filing takes weeks.
-- **Each manga takes several minutes** (12–17 image generations). Serverless platforms with short request timeouts (Vercel, Netlify functions) don't fit; a long-running process with a worker thread does. No GPU is needed because Gemini does the drawing.
-- **Payment notifications** from WeChat Pay, Alipay and Stripe need a fixed public HTTPS address. Caddy provides the certificate.
+The `DOMAIN` must resolve to the server. Set `PUBLIC_URL` to the exact public HTTPS origin. Configure `ALIPAY_NOTIFY_URL` to `https://<your-domain>/api/pay/notify`. Mount persistent `./data` and back it up. Keep `.env`, `.alipay-sandbox.json`, merchant keys, and uploaded data outside version control.
 
-Good options, any of which runs this repo unchanged:
+The static GitHub Pages page is a preview. Live checkout requires serving the page from this FastAPI origin or routing its `/api/` requests to this server on the same origin.
 
-| Provider | Product | Size to start | Notes |
-| --- | --- | --- | --- |
-| Alibaba Cloud (阿里云) | ECS, Singapore region | 2 vCPU / 4 GB | Chinese console and billing; add OSS later for files |
-| Tencent Cloud (腾讯云) | Lighthouse, Singapore | 2 vCPU / 4 GB | Cheapest to start |
-| Google Cloud | Compute Engine, asia-southeast1 | e2-medium | Same network as Gemini |
+## Payment and fulfillment checks
 
-Files: start on the server's disk (`./data`). Delete uploaded videos after 7 days. When volume grows, move uploads and PDFs to object storage (Alibaba OSS or Google Cloud Storage) and serve downloads from signed URLs.
+Follow [the Alipay web payment guide](ALIPAY_WEB.md) for the sandbox and production credentials. The server disables checkout when the Gemini key or video tools are missing, but that check cannot establish that Gemini generation or the merchant account will succeed. Before accepting production orders:
 
-Scaling later: run more worker processes, or move `app/worker.py` to a queue (Redis + RQ, or Cloud Run Jobs). Postgres replaces SQLite once you run more than one server.
+1. Approve and set the book's actual CNY charge. Reconcile its displayed USD catalog price with the payment amount shown on the page.
+2. Complete a sandbox upload, page-pay, notification, trade-query, PDF generation, and buyer-cookie download test.
+3. Test the production HTTPS callback with a small real transaction and refund using the approved application.
+4. Publish terms, privacy information, a support contact, and a retention policy for generated PDFs. Inputs are deleted after seven days for eligible Alipay orders; generated PDFs remain on disk until removed by an operator.
+5. Monitor failed jobs and arrange refunds or support when fulfillment fails.
 
-## 2. Pay-and-buy flow
-
-What the buyer does: turn the dials → drop a clip → scan the QR → wait on the same page → tap "Download the PDF". No account, no form.
-
-What the server does:
-
-1. On upload it stores the video and creates an order with an unguessable id.
-2. It asks the payment provider for a QR payload and returns it; the page renders the QR.
-3. The provider calls `/api/pay/notify`. The server checks the signature **and the amount** before marking the order paid. The page never decides that an order is paid.
-4. The worker draws the manga and the QR area turns into a download link.
-5. If drawing fails, the order shows "failed" with the order number; refund it from the merchant dashboard.
-
-### Which payment provider
-
-| | WeChat Pay Native (扫码支付) | Alipay 当面付 | Stripe Checkout |
-| --- | --- | --- | --- |
-| Who can open it | Mainland business licence (个体工商户 is enough) | Same | Company or sole trader in a Stripe country (HK, SG, US, JP…) |
-| Buyer pays with | WeChat | Alipay | Card, Alipay, WeChat Pay |
-| Fee | about 0.6% | about 0.6% | higher (about 3–4% for cards and wallets) |
-| One QR for both wallets | No | No | Yes (the QR opens a checkout page) |
-
-**If your buyers are in mainland China:** register a 个体工商户, open WeChat Pay first (most buyers will use it), then add Alipay. Set `PAYMENT_PROVIDER=wechat`. If you want one QR that both apps can scan, use a licensed aggregator (聚合支付) instead.
-
-**If you have, or will open, a company outside mainland China:** Stripe is the fastest path and covers international buyers too. Set `PAYMENT_PROVIDER=stripe`.
-
-Avoid personal receive codes (个人收款码) for this: the server can't confirm the payment automatically, and the platforms restrict commercial use.
-
-### Price
-
-Each manga makes roughly 12–17 calls to the Gemini image model plus one text call. At current list prices that is roughly ¥15–30 of API cost per manga, so ¥39 (the placeholder in `.env.example`) is close to the floor. Check Google's current pricing before you set it.
-
-## 3. Things to settle before going public
-
-- **Style names.** "Naruto", "Slam Dunk", "Demon Slayer", "One Piece" and "Miyazaki" are trademarks or a real person's name. Using them to sell a product invites takedowns. Consider labels like "Shonen Ninja", "90s Hoops", "Taisho Blade", "Pirate Adventure", "Meadow Film" on the public site.
-- **People in uploaded videos.** Add terms of service and a privacy notice: buyers must have the right to use the footage (many clips will show minors), and videos are deleted after 7 days.
-- **Abuse limits.** Rate-limit uploads per IP and keep `MAX_UPLOAD_MB` modest.
-- **Gemini key.** Create a fresh key for production, keep it only in the server's `.env`, and set a budget alert in Google Cloud.
+The redrawn-video package is disabled. Its checkout must stay disabled until generation, delivery, price approval, and tests are complete.

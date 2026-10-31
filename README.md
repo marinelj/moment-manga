@@ -1,52 +1,57 @@
 # Moment Manga
 
-Upload a short video, pick a theme and an art style on two telephone dials, pay by QR code, and get back a 3–5 page Japanese-style manga as a PDF.
+Moment Manga turns a short basketball clip into a 3–5 page black-and-white manga PDF. The English page is at `/`; the Chinese page is at `/zh/`. Buyers can upload a clip and an optional lead-character photo, pay through Alipay AI web application payment, and download the PDF when generation finishes.
 
-The whole site is one page with four controls, in English at `/` and Chinese at `/zh/`: two rotary dials, a video upload box and a payment QR area.
+The **manga book** is the only product currently available for checkout. The book-and-redrawn-video package is shown as coming soon because video redrawing and delivery are not implemented. GitHub Pages serves a static preview; it cannot process uploads or payments.
 
-- Left dial (Sports, Travel & Home Life, Portrait Photos, Comedy) swaps the line-art background.
-- Right dial (Hayao Miyazaki, Naruto, Slam Dunk, Demon Slayer, One Piece) restyles the whole page and sets the art style of the manga.
+## Showcase assets to add
 
-## How it works
+The static preview includes SVG page placeholders and video placeholders. Replace them by adding these files under `web/demo/`:
 
-```
-browser ──upload──▶ /api/orders ──▶ payment provider ──QR──▶ browser
-                                     │ (server-side notify, signature checked)
-                                     ▼
-                         worker: ffmpeg frames → Gemini storyboard → Gemini panels → lettering → PDF
-                                     ▼
-                     QR area turns into "Download the PDF"
-```
-
-| Path | What it is |
+| File | Suggested size |
 | --- | --- |
-| `web/index.html` | The single page (no build step) |
-| `app/main.py` | FastAPI server: upload, order status, payment notify |
-| `app/payments.py` | WeChat Pay Native, Alipay 当面付, Stripe Checkout, and a demo provider |
-| `app/pipeline.py` | Video → manga pipeline (Gemini text + image models) |
-| `app/worker.py` | Background thread that processes paid orders |
-| `docs/LAUNCH.md` | Where to host it and how to set up payments |
+| `manga-page-01.jpg` | 1200 × 1800 px, portrait |
+| `manga-page-02.jpg` | 1200 × 1800 px, portrait |
+| `original.mp4` | 1920 × 1080 px, 10–15 seconds |
+| `rerendered.mp4` | 1920 × 1080 px, same duration and framing as `original.mp4` |
+
+The two videos should use browser-friendly H.264 encoding and stay small enough to load quickly on mobile.
 
 ## Run locally
 
+Use Python 3.12 and install `ffmpeg` (including `ffprobe`) on `PATH`:
+
 ```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt          # also needs ffmpeg on PATH
-export GEMINI_API_KEY=...                 # never commit this
+python3.12 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Open http://localhost:8000. `PAYMENT_PROVIDER` defaults to `demo`: the QR code points to `/api/dev/pay/<order>`, so scanning it with a phone on the same network (set `PUBLIC_URL` to your LAN address) marks the order paid.
+`PAYMENT_PROVIDER=demo` is the default and displays the page without live checkout. To test the Alipay sandbox, follow [the payment setup guide](docs/ALIPAY_WEB.md). Set `GEMINI_API_KEY` before enabling checkout: the server only accepts paid orders when the generation tools are configured. The CNY payment amount must be set explicitly in `ALIPAY_BOOK_CENTS`; the displayed USD catalog price does not set it.
 
-## Deploy
+Run the local tests with:
 
 ```bash
-cp .env.example .env    # fill in keys on the server only
-docker compose up -d --build
+.venv/bin/python -m pytest -q
 ```
 
-Caddy in `docker-compose.yml` gets an HTTPS certificate for `DOMAIN` automatically. See `docs/LAUNCH.md`.
+## How it works
 
-## Secrets
+1. The browser sends the clip, optional photo, product, and language to `POST /api/orders`.
+2. The server validates the files and records the server-configured CNY amount. It returns a same-origin Alipay payment link and an HttpOnly buyer cookie.
+3. Alipay's signed notification or a server-side trade query confirms payment. A browser redirect never marks an order paid.
+4. The worker extracts video frames, generates manga panels with Gemini, and assembles a PDF. The buyer's page polls for progress and a protected download link.
+5. Uploaded inputs are deleted seven days after order creation once the order is unpaid, done, or failed. Generated PDFs require an operator retention policy.
 
-All keys come from environment variables (`.env` on the server, which is git-ignored). Merchant certificates go in `./secrets/`, also git-ignored.
+| Path | Purpose |
+| --- | --- |
+| `web/index.html` | English and Chinese single-page UI |
+| `app/main.py` | Upload, checkout, status, and download API |
+| `app/alipay_web.py` | Signed Alipay web checkout and payment verification |
+| `app/pipeline.py` | Video-to-manga PDF generation |
+| `app/worker.py` | Paid-order processing and input cleanup |
+| `docs/API_CHANGES.md` | Current browser/API contract |
+| `docs/ALIPAY_WEB.md` | Alipay setup, operations, and launch checks |
+
+For deployment, copy `.env.example` to a server-only `.env`, fill in approved values, and run `docker compose up -d --build`. See [the launch guide](docs/LAUNCH.md). Never commit `.env`, merchant keys, or uploaded files.

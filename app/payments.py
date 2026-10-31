@@ -66,7 +66,7 @@ class WeChatNative:
 
 
 class AlipayPrecreate:
-    """Alipay 当面付 precreate: returns a qr_code URL. Needs an Alipay open-platform app."""
+    """Existing Alipay precreate QR provider, retained for existing deployments."""
     methods = ["alipay"]
 
     def __init__(self):
@@ -132,5 +132,8 @@ class StripeCheckout:
 
 
 def load():
+    if settings.PAYMENT_PROVIDER == "alipay_web":
+        from .alipay_web import AlipayWeb
+        return AlipayWeb()
     return {"demo": Demo, "wechat": WeChatNative, "alipay": AlipayPrecreate,
             "stripe": StripeCheckout}[settings.PAYMENT_PROVIDER]()

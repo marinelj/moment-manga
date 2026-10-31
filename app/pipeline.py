@@ -68,14 +68,19 @@ Return JSON: {{"title": str, "pages": [{{"panels": [{{"frame": int, "shot": "wid
     return json.loads(r.text)
 
 
-def draw_panel(client, frame: Path, panel: dict, style: str, aspect: str) -> Image.Image:
+def draw_panel(client, frame: Path, panel: dict, style: str, aspect: str,
+               photo: Path | None = None) -> Image.Image:
     from google.genai import types
     prompt = (f"Draw ONE single manga panel ({panel['shot']} shot) in a {STYLE_PROMPTS[style]}. "
               f"Scene: {panel['description']}. Use the photo only as pose and composition reference. "
               "No text, no speech bubbles, no sound effects, no logos; jersey numbers only. "
               f"Aspect ratio {aspect}.")
+    references = [prompt, Image.open(frame)]
+    if photo:
+        references.extend(["Keep the lead character's appearance consistent with this portrait reference.",
+                           Image.open(photo)])
     r = client.models.generate_content(
-        model=settings.GEMINI_IMAGE_MODEL, contents=[prompt, Image.open(frame)],
+        model=settings.GEMINI_IMAGE_MODEL, contents=references,
         config=types.GenerateContentConfig(response_modalities=["IMAGE"]))
     for part in r.candidates[0].content.parts:
         if part.inline_data:
@@ -137,7 +142,8 @@ def run(order: dict, progress=lambda p: None) -> Path:
         for panel, (x, y, w, h) in zip(page["panels"], layout(len(page["panels"]))):
             frame = frames[max(0, min(int(panel.get("frame", 0)), len(frames) - 1))]
             aspect = "16:9" if w / h > 1.3 else "4:3" if w / h > 0.9 else "3:4"
-            art = draw_panel(client, frame, panel, order["style"], aspect)
+            art = draw_panel(client, frame, panel, order["style"], aspect,
+                             Path(order["photo"]) if order.get("photo") else None)
             art.save(work / f"P{pi + 1}-{done + 1}.png")
             art = letter(_cover(art, w, h), panel.get("caption", ""), panel.get("sfx", ""))
             sheet.paste(art, (x, y))
