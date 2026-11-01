@@ -26,6 +26,11 @@ provider = payments.load()
 app.mount("/demo", StaticFiles(directory=WEB / "demo"), name="demo")
 
 
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
+
 def checkout_ready() -> bool:
     """Do not offer paid orders when the PDF worker cannot run."""
     return (settings.PAYMENT_PROVIDER == "alipay_web" and bool(settings.GEMINI_API_KEY)

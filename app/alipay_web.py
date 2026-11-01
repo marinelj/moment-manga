@@ -33,11 +33,15 @@ class AlipayWeb:
 
         mode = settings.env("ALIPAY_ENV", "sandbox")
         if mode == "sandbox":
-            # Resolve from this module, independent of the process working directory.
-            path = Path(__file__).resolve().parent.parent / ".alipay-sandbox.json"
-            if path.stat().st_mode & 0o077:
-                raise ValueError("Sandbox configuration must be owner-only")
-            data = json.loads(path.read_text(encoding="utf-8"))
+            sandbox_json = settings.env("ALIPAY_SANDBOX_JSON")
+            if sandbox_json:
+                data = json.loads(sandbox_json)
+            else:
+                # Local development keeps the sandbox credentials in a private file.
+                path = Path(__file__).resolve().parent.parent / ".alipay-sandbox.json"
+                if path.stat().st_mode & 0o077:
+                    raise ValueError("Sandbox configuration must be owner-only")
+                data = json.loads(path.read_text(encoding="utf-8"))
             apps = data.get("appIds", [])
             if len(apps) != 1 or apps[0].get("type") != "PUBLICAPP":
                 raise ValueError("Expected one verified public application in sandbox config")
