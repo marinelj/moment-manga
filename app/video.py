@@ -61,11 +61,14 @@ CHECK_PROMPT = (
     "Image 1 is a real video frame, image 2 is a manga redraw of it. Answer JSON only: "
     '{"text": true if image 2 shows any letters, words, logos or numbers other than numbers on player jerseys, '
     '"extra_people": true if image 2 adds a large foreground person or crowd that is not in image 1, '
+    '"manga": true if image 2 is a black-and-white ink drawing (only jerseys may be coloured), false if it looks '
+    'like a photo or a full-colour picture, '
     '"colours_ok": true if every player in image 2 wears the same jersey colour as in image 1, '
     '"fix": one short instruction to fix the problems, or ""}')
 FIX_PROMPT = (
-    "Edit image 1 (keep everything else identical, same style and framing; image 2 is the real frame it was "
-    "drawn from): {fix} Remove any letters, logos or words except jersey numbers.")
+    "Edit this black-and-white ink manga illustration. Keep everything else identical: the same ink-and-screentone "
+    "drawing style, the same framing, players and colours. Do not make it look like a photo. {fix} "
+    "Remove any letters, logos or words except jersey numbers.")
 MOTION_PROMPT = (
     "This video is a rough animatic of manga keyframes drawn from a real basketball play. Each drawing is held "
     "still only as a placeholder: never freeze. Animate continuous movement through every drawing: players keep "
@@ -274,16 +277,27 @@ def draw_keyframes(client, ledger, cache, frames, style: Path, rule: str, aspect
         _image_call(client, ledger, cache, "keyframe", contents, aspect, dst, sleep)
         verdict = _json_call(client, ledger, cache, "check", [src, Image.open(dst).convert("RGB")],
                              CHECK_PROMPT, sleep)
-        if verdict.get("text") or verdict.get("extra_people") or verdict.get("colours_ok") is False:
+        if problems(verdict):
+            # One edit of the drawing alone (the real frame is left out: with it the edit drifts back to
+            # a photo), kept only if a second check finds it is still manga and has fewer problems.
             fixed = out / f"kf_{i:03d}_fixed.png"
             _image_call(client, ledger, cache, "fix",
-                        [Image.open(dst).convert("RGB"), src, FIX_PROMPT.format(fix=verdict.get("fix") or "")],
+                        [Image.open(dst).convert("RGB"), FIX_PROMPT.format(fix=verdict.get("fix") or "")],
                         aspect, fixed, sleep)
-            fixed.replace(dst)
+            after = _json_call(client, ledger, cache, "check", [src, Image.open(fixed).convert("RGB")],
+                               CHECK_PROMPT, sleep)
+            if after.get("manga") is not False and problems(after) < problems(verdict):
+                fixed.replace(dst)
         keyframes.append(dst)
         prev = dst
         progress(i + 1, len(frames))
     return keyframes
+
+
+def problems(verdict: dict) -> int:
+    """A drawing that is not manga counts most: it would also spoil every keyframe drawn after it."""
+    return (3 * (verdict.get("manga") is False) + bool(verdict.get("text")) + bool(verdict.get("extra_people"))
+            + (verdict.get("colours_ok") is False))
 
 
 def build_animatic(frames, keyframes, duration: float, size: tuple[int, int], out: Path) -> Path:

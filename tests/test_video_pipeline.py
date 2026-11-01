@@ -38,9 +38,9 @@ def make_clip(path, seconds, size="640x360"):
 class FakeGemini:
     """Answers like the real SDK objects the pipeline reads."""
 
-    def __init__(self, clip_bytes, flag_first=True):
+    def __init__(self, clip_bytes, flag_first=True, fix_ruins=False):
         self.calls = {"image": 0, "json": 0, "motion": 0}
-        self.flag_first, self.clip = flag_first, clip_bytes
+        self.flag_first, self.clip, self.fix_ruins = flag_first, clip_bytes, fix_ruins
         self.models = SimpleNamespace(generate_content=self._generate)
         self.files = SimpleNamespace(upload=lambda file: SimpleNamespace(state="ACTIVE", uri="files/x", name="x"),
                                      get=lambda name: SimpleNamespace(state="ACTIVE", uri="files/x", name=name))
@@ -59,7 +59,9 @@ class FakeGemini:
             data = {"overlays": [[900, 0, 1000, 300]], "teams": ["royal blue", "white"]}
         else:
             bad = self.flag_first and self.calls["json"] == 2      # first keyframe check
-            data = {"text": bad, "extra_people": False, "colours_ok": True, "fix": "remove the banner text"}
+            ruined = self.fix_ruins and self.calls["json"] == 3    # the check of that fix
+            data = {"text": bad, "extra_people": False, "colours_ok": True, "manga": not ruined,
+                    "fix": "remove the banner text"}
         usage = SimpleNamespace(prompt_token_count=1000, candidates_token_count=50)
         return SimpleNamespace(text=json.dumps(data), usage_metadata=usage)
 
@@ -103,7 +105,7 @@ def test_video_run_makes_mp4_records_costs_and_reuses_cache(store):
     duration, w, h = video.probe(out)
     assert (w, h) == (1280, 720) and duration == pytest.approx(8, abs=0.2)
     assert seen[-1] == 100
-    assert fake.calls == {"image": 17, "json": 17, "motion": 2}    # 16 keyframes + 1 fix
+    assert fake.calls == {"image": 17, "json": 18, "motion": 2}    # 16 keyframes + 1 fix, re-checked
     lines = db.order_costs(order["id"])
     keyframes = [line for line in lines if line["step"] == "keyframe"]
     assert len(keyframes) == 16 and all(line["usd"] == video.IMAGE_PRICE["1K"] for line in keyframes)
@@ -111,7 +113,7 @@ def test_video_run_makes_mp4_records_costs_and_reuses_cache(store):
     motion = [line for line in lines if line["step"] == "motion"]
     assert motion[0]["usd"] == pytest.approx(38500 * video.MOTION_PRICE_OUT)
     first_total = db.order_cost_total(order["id"])
-    assert first_total == pytest.approx(17 * 0.067 + 2 * 38500 * 17.5e-6 + 17 * (1000 * 0.1e-6 + 50 * 0.4e-6))
+    assert first_total == pytest.approx(17 * 0.067 + 2 * 38500 * 17.5e-6 + 18 * (1000 * 0.1e-6 + 50 * 0.4e-6))
 
     # The same clip again (for example a retried order) is served from the cache at no cost.
     again = db.create("sports", "slamdunk", str(clip))
@@ -228,3 +230,18 @@ def test_worker_makes_book_then_video_and_keeps_book_if_video_fails(store, monke
     db.update(book["id"], product="book", status="processing")
     worker.process(db.get(book["id"]))
     assert db.get(book["id"])["video_result"] is None
+
+
+@needs_ffmpeg
+def test_a_fix_that_stops_looking_like_manga_is_thrown_away(store):
+    clip = make_clip(store / "play.mp4", 1.0)
+    fake = FakeGemini(b"", fix_ruins=True)
+    order = db.create("sports", "slamdunk", str(clip))
+    frames = video.sample_frames(clip, store / "src", 1.0, 0.5, (1280, 720))
+    cache, ledger = video.Cache(store / "cache"), video.Ledger(order["id"], 4.0)
+    fake.calls["json"] = 1                                    # as if inspect already ran
+    keyframes = video.draw_keyframes(fake, ledger, cache, frames, settings.VIDEO_STYLE_REF, "rule", "16:9",
+                                     store / "kf", lambda s: None, lambda i, n: None)
+    first_drawing = Image.open(keyframes[0]).getpixel((0, 0))
+    assert first_drawing == (7, 7, 7)                         # the original drawing, not the fix (14)
+    assert video.problems({"manga": False}) > video.problems({"text": True, "extra_people": True})
