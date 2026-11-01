@@ -28,7 +28,7 @@ for column, kind in (
     ("product", "TEXT"), ("amount_yuan", "TEXT"), ("app_id", "TEXT"),
     ("seller_id", "TEXT"), ("buyer_token_hash", "TEXT"),
     ("alipay_trade_no", "TEXT"), ("paid_at", "REAL"), ("photo", "TEXT"),
-    ("last_query_at", "REAL"),
+    ("last_query_at", "REAL"), ("video_result", "TEXT"),
 ):
     try:
         _conn.execute(f"ALTER TABLE orders ADD COLUMN {column} {kind}")
@@ -42,7 +42,31 @@ _conn.execute("""CREATE TABLE IF NOT EXISTS alipay_refunds (
     out_request_no TEXT PRIMARY KEY, out_trade_no TEXT NOT NULL,
     amount_yuan TEXT NOT NULL, status TEXT NOT NULL, created REAL NOT NULL
 )""")
+_conn.execute("""CREATE TABLE IF NOT EXISTS order_costs (
+    order_id TEXT NOT NULL, step TEXT NOT NULL, model TEXT NOT NULL,
+    units REAL NOT NULL, usd REAL NOT NULL, cached INTEGER NOT NULL, created REAL NOT NULL
+)""")
 _conn.commit()
+
+
+def add_cost(oid: str, step: str, model: str, units: float, usd: float, cached: bool = False) -> None:
+    """Cost ledger: one row per paid model call (cached reuse is logged at $0)."""
+    with _lock:
+        _conn.execute("INSERT INTO order_costs VALUES (?,?,?,?,?,?,?)",
+                      (oid, step, model, units, 0.0 if cached else usd, int(cached), time.time()))
+        _conn.commit()
+
+
+def order_costs(oid: str) -> list[dict]:
+    with _lock:
+        rows = _conn.execute("SELECT * FROM order_costs WHERE order_id=? ORDER BY created", (oid,)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def order_cost_total(oid: str) -> float:
+    with _lock:
+        row = _conn.execute("SELECT COALESCE(SUM(usd), 0) FROM order_costs WHERE order_id=?", (oid,)).fetchone()
+    return float(row[0])
 
 
 def create(theme: str, style: str, video: str, lang: str = "en") -> dict:
