@@ -74,6 +74,8 @@ class AlipayWeb:
         config.sign_type = "RSA2"
         self.client = DefaultAlipayClient(alipay_client_config=config)
         self.prices = {"book": self._price("ALIPAY_BOOK_CENTS")}
+        if settings.env("ALIPAY_ALL_CENTS"):   # the video package is sold only once its price is set
+            self.prices["all"] = self._price("ALIPAY_ALL_CENTS")
 
     @staticmethod
     def _price(name: str) -> str:

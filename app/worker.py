@@ -5,7 +5,7 @@ import time
 import traceback
 from pathlib import Path
 
-from . import db, pipeline, settings
+from . import db, pipeline, settings, video
 
 
 def _cleanup_uploads():
@@ -33,12 +33,23 @@ def _loop():
         if not order:
             time.sleep(2)
             continue
-        try:
-            pdf = pipeline.run(order, progress=lambda p: db.update(order["id"], progress=int(p)))
-            db.update(order["id"], status="done", progress=100, result=str(pdf))
-        except Exception:
-            traceback.print_exc()
-            db.update(order["id"], status="failed", error=traceback.format_exc()[-2000:])
+        process(order)
+
+
+def process(order: dict) -> None:
+    """Book only, or book then moving-manga video for the "all" package."""
+    oid, with_video = order["id"], order.get("product") == "all"
+    book_share = 30 if with_video else 100
+    try:
+        pdf = pipeline.run(order, progress=lambda p: db.update(oid, progress=int(p * book_share / 100)))
+        db.update(oid, result=str(pdf))
+        if with_video:
+            mp4 = video.run(order, progress=lambda p: db.update(oid, progress=int(30 + p * 0.7)))
+            db.update(oid, video_result=str(mp4))
+        db.update(oid, status="done", progress=100)
+    except Exception:
+        traceback.print_exc()
+        db.update(oid, status="failed", error=traceback.format_exc()[-2000:])
 
 
 def start():

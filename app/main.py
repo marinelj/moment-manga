@@ -32,7 +32,7 @@ def checkout_ready() -> bool:
             and bool(shutil.which("ffmpeg")) and bool(shutil.which("ffprobe")))
 
 
-def validate_video(path: Path) -> None:
+def validate_video(path: Path) -> float:
     try:
         result = subprocess.run(
             ["ffprobe", "-v", "error", "-select_streams", "v:0",
@@ -51,6 +51,7 @@ def validate_video(path: Path) -> None:
         raise HTTPException(400, "Invalid video") from exc
     if not video_stream or not math.isfinite(duration) or not 0.5 <= duration <= 120:
         raise HTTPException(400, "Video must be between 0.5 and 120 seconds")
+    return duration
 
 
 @app.on_event("startup")
@@ -73,6 +74,7 @@ def config():
     ready = checkout_ready()
     return {"price": settings.PRICE_LABEL, "methods": provider.methods,
             "max_upload_mb": settings.MAX_UPLOAD_MB,
+            "video_max_seconds": settings.VIDEO_MAX_SECONDS,
             "checkout_ready": ready,
             "products": list(provider.prices) if ready else [],
             "charges": {product: {"amount": amount, "currency": "CNY"}
@@ -117,7 +119,10 @@ async def create_order(video: UploadFile = File(...), theme: str | None = Form(N
         if not size:
             raise HTTPException(400, "Video is empty")
         if webpay:
-            validate_video(tmp)
+            duration = validate_video(tmp)
+            if product == "all" and duration and duration > settings.VIDEO_MAX_SECONDS:
+                raise HTTPException(400, f"The redrawn video needs a clip of at most "
+                                         f"{settings.VIDEO_MAX_SECONDS:g} seconds")
         if photo and tmp_photo:
             photo_size = 0
             with tmp_photo.open("xb") as out:
@@ -194,6 +199,8 @@ def order_status(oid: str, request: Request):
     out = {"id": oid, "status": o["status"], "progress": o["progress"]}
     if o["status"] == "done":
         out["downloads"] = {"book": f"/api/orders/{oid}/manga.pdf"}
+        if o.get("video_result"):
+            out["downloads"]["clip"] = f"/api/orders/{oid}/manga.mp4"
         out["result_url"] = out["downloads"]["book"]
     if o.get("provider") == "alipay_web" and o["status"] == "unpaid":
         out["payment"] = provider.payment(o)
@@ -208,6 +215,16 @@ def download(oid: str, request: Request):
     if o.get("provider") == "alipay_web":
         _require_buyer(request, o)
     return FileResponse(o["result"], media_type="application/pdf", filename="moment-manga.pdf")
+
+
+@app.get("/api/orders/{oid}/manga.mp4")
+def download_video(oid: str, request: Request):
+    o = db.get(oid)
+    if not o or o["status"] != "done" or not o.get("video_result"):
+        raise HTTPException(404)
+    if o.get("provider") == "alipay_web":
+        _require_buyer(request, o)
+    return FileResponse(o["video_result"], media_type="video/mp4", filename="moment-manga.mp4")
 
 
 @app.post("/api/pay/notify")
@@ -284,6 +301,19 @@ def _require_admin(request: Request) -> None:
 class RefundRequest(BaseModel):
     amount: str
     out_request_no: str
+
+
+@app.get("/api/admin/orders/{oid}/costs")
+def admin_order_costs(oid: str, request: Request):
+    """What an order cost us in model calls, line by line."""
+    _require_admin(request)
+    order = db.get(oid)
+    if not order:
+        raise HTTPException(404)
+    lines = db.order_costs(oid)
+    return {"id": oid, "product": order.get("product"), "status": order["status"],
+            "error": (order.get("error") or "")[-300:], "total_usd": round(db.order_cost_total(oid), 4),
+            "lines": [{k: line[k] for k in ("step", "model", "units", "usd", "cached")} for line in lines]}
 
 
 @app.post("/api/admin/alipay/orders/{oid}/query")
