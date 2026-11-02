@@ -57,6 +57,7 @@ Later phases, not in the code yet: Qwen-Image-Edit with a style LoRA on RunPod r
 - Front end: `all` checkout uses the configured clip-duration limit; long clips can still buy the book. English and Chinese processing states show the expected wait, and completed clips play above the PDF/MP4 download links.
 - Done: book pipeline, Alipay web checkout (sandbox on Railway), video pipeline and `all` product in the backend (PR #1), storyboard model fix (PR #3), free sandbox payment testing with `GENERATION_MODE=sample` (2026-11-02).
 - Front end: English and Chinese checkout pages label sample mode, payment-test processing, sample downloads, and sample video previews. Payment-test orders do not show the live-generation wait estimate.
+- Verified 2026-11-03: local `book` sandbox checkout in Safari at the configured ¥1.10 charge; server trade query returned `TRADE_SUCCESS`, sample PDF downloaded with the buyer cookie and matched the delivered file, full SDK refund returned `fund_change=Y`, and refund query returned `REFUND_SUCCESS`. Zero model calls and $0 model cost. Public HTTPS notification delivery and production remain unverified.
 - Before selling `all`: set `ALIPAY_ALL_CENTS`; raise the Gemini spend-rate limit (the default throttles at about $10 an hour, which is 3–4 videos); review one live sample.
 - Last measured: a 6 s clip through the video pipeline took about 5 minutes and cost $1.62.
 
