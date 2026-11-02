@@ -151,6 +151,7 @@ async def create_order(video: UploadFile = File(...), theme: str | None = Form(N
             except (UnidentifiedImageError, OSError, ValueError) as exc:
                 raise HTTPException(400, "Invalid photo") from exc
         order = db.create(theme, style, "", lang)
+        db.update(order["id"], generation=settings.GENERATION_MODE)   # fixed for the order's lifetime
         path = uploads / f"{order['id']}{Path(video.filename or '').suffix.lower() or '.mp4'}"
         shutil.move(tmp, path)
         photo_path = None
@@ -207,6 +208,8 @@ def order_status(oid: str, request: Request):
             except Exception:
                 pass  # A transient gateway failure is an unknown payment state.
     out = {"id": oid, "status": o["status"], "progress": o["progress"]}
+    if o.get("generation") == "sample":
+        out["payment_test"] = True    # sample files only: the page should say this is a payment test
     if o["status"] == "done":
         out["downloads"] = {"book": f"/api/orders/{oid}/manga.pdf"}
         if o.get("video_result"):

@@ -64,3 +64,27 @@ def test_checkout_readiness_by_mode(monkeypatch):
     assert main.checkout_ready() is False              # never sell sample files for real money
     monkeypatch.setattr(settings, "GENERATION_MODE", "typo")
     assert main.checkout_ready() is False
+
+
+def test_a_test_order_stays_a_test_order_after_switching_to_live(store, monkeypatch):
+    def paid(*args, **kwargs):
+        raise AssertionError("a paid pipeline ran for a payment-test order")
+    monkeypatch.setattr(pipeline, "run", paid)
+    monkeypatch.setattr(video, "run", paid)
+    order = db.create("sports", "slamdunk", "")
+    db.update(order["id"], product="all", status="processing", generation="sample")
+    monkeypatch.setattr(settings, "GENERATION_MODE", "live")     # restarted with live generation
+    worker.process(db.get(order["id"]))
+    assert db.get(order["id"])["status"] == "done"
+
+
+def test_status_marks_payment_test_orders(store, monkeypatch):
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(settings, "PAYMENT_PROVIDER", "demo")
+    order = db.create("sports", "slamdunk", "")
+    db.update(order["id"], generation="sample", status="processing")
+    body = TestClient(main.app).get(f"/api/orders/{order['id']}").json()
+    assert body["payment_test"] is True
+    live = db.create("sports", "slamdunk", "")
+    db.update(live["id"], generation="live", status="processing")
+    assert "payment_test" not in TestClient(main.app).get(f"/api/orders/{live['id']}").json()

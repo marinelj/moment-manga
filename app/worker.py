@@ -40,7 +40,9 @@ def process(order: dict) -> None:
     """Book only, or book then moving-manga video for the "all" package."""
     oid, with_video = order["id"], order.get("product") == "all"
     book_share = 30 if with_video else 100
-    if settings.GENERATION_MODE == "sample":
+    # The mode recorded when the order was created wins, so a test order never reaches the paid
+    # pipelines even if the server restarts with GENERATION_MODE=live. Older orders use the setting.
+    if (order.get("generation") or settings.GENERATION_MODE) == "sample":
         try:
             pdf, mp4 = sample.run(order, with_video)
             db.update(oid, result=str(pdf), video_result=str(mp4) if mp4 else None, status="done", progress=100)

@@ -28,7 +28,7 @@ for column, kind in (
     ("product", "TEXT"), ("amount_yuan", "TEXT"), ("app_id", "TEXT"),
     ("seller_id", "TEXT"), ("buyer_token_hash", "TEXT"),
     ("alipay_trade_no", "TEXT"), ("paid_at", "REAL"), ("photo", "TEXT"),
-    ("last_query_at", "REAL"), ("video_result", "TEXT"),
+    ("last_query_at", "REAL"), ("video_result", "TEXT"), ("generation", "TEXT"),
 ):
     try:
         _conn.execute(f"ALTER TABLE orders ADD COLUMN {column} {kind}")
