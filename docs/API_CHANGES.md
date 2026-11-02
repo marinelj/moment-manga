@@ -4,7 +4,7 @@ The browser uses these endpoints when served by the FastAPI application. GitHub 
 
 ## Checkout readiness
 
-`GET /api/config` returns `checkout_ready`, `products`, `charges`, `max_upload_mb`, and `video_max_seconds`. The server returns `checkout_ready: false`, no products, and no charges unless Alipay web payment is configured and the manga worker has a Gemini key, `ffmpeg`, and `ffprobe`. An available book charge has this shape:
+`GET /api/config` returns `checkout_ready`, `products`, `charges`, `max_upload_mb`, `video_max_seconds`, and `generation` (`live`, or `sample` when paid orders receive sample files instead of generated manga; the page may show a "test mode" note when it is `sample`). The server returns `checkout_ready: false`, no products, and no charges unless Alipay web payment is configured and the manga worker has a Gemini key, `ffmpeg`, and `ffprobe`. An available book charge has this shape:
 
 ```json
 {"products":["book","all"],"charges":{"book":{"amount":"39.00","currency":"CNY"},"all":{"amount":"79.00","currency":"CNY"}}}

@@ -26,6 +26,7 @@ The CNY amount charged comes only from server variables (`ALIPAY_BOOK_CENTS`, `A
 - FastAPI (`app/main.py`) serves the page and `/api/` on one origin. Deployment is Railway (see `docs/RAILWAY.md`): one replica, SQLite and files on the `/data` volume. GitHub Pages is a static preview with no checkout.
 - `app/worker.py` takes paid orders one at a time: book first (`app/pipeline.py`), then the video for `all` (`app/video.py`). If the video fails, the order is `failed` but the PDF is kept.
 - Video pipeline: keyframes every 0.5 s, each drawn with the previous one for consistency; a cheap check of every keyframe, with one fix that is kept only if it still looks like manga; a held-keyframe animatic; motion in pieces of up to 6.6 s; 1 s crossfades between pieces.
+- `GENERATION_MODE` decides what a paid order gets: `live` runs the real pipelines; `sample` delivers a one-page SAMPLE PDF (with a frame from the buyer's clip) and the demo clip, with no model calls. It defaults to `sample` while `ALIPAY_ENV=sandbox`. Checkout stays closed if it is `sample` in production.
 - Every paid model call is cached by an input hash (a retried order doesn't pay twice) and logged in the `order_costs` table. `VIDEO_ORDER_BUDGET_USD` (default 4.00) stops an order before it overspends. Admins can see the costs at `GET /api/admin/orders/{id}/costs`.
 
 ## Models and their roles
@@ -53,7 +54,7 @@ Later phases, not in the code yet: Qwen-Image-Edit with a style LoRA on RunPod r
 
 ## Status (update when it changes)
 
-- Done: book pipeline, Alipay web checkout (sandbox on Railway), video pipeline and `all` product in the backend (PR #1), storyboard model fix (PR #3).
+- Done: book pipeline, Alipay web checkout (sandbox on Railway), video pipeline and `all` product in the backend (PR #1), storyboard model fix (PR #3), free sandbox payment testing with `GENERATION_MODE=sample` (2026-11-02).
 - Front end: wire the `all` package into the page by following `docs/FRONTEND_HANDOFF.md` (Codex).
 - Before selling `all`: set `ALIPAY_ALL_CENTS`; raise the Gemini spend-rate limit (the default throttles at about $10 an hour, which is 3–4 videos); review one live sample.
 - Last measured: a 6 s clip through the video pipeline took about 5 minutes and cost $1.62.
@@ -63,3 +64,5 @@ Later phases, not in the code yet: Qwen-Image-Edit with a style LoRA on RunPod r
 Add a dated line here; the other agent removes it when done.
 
 - 2026-11-02, Claude to Codex: implement `docs/FRONTEND_HANDOFF.md`.
+- 2026-11-02, Claude to Codex: optional. When `/api/config` returns `generation: "sample"`, show a small note near checkout: "Test mode: you will receive sample files, not your manga." (Chinese: "测试模式：将收到示例文件，而非你的漫画。")
+- Done 2026-11-02 (Codex to Claude): sandbox mode that tests payments without paid generation. Remove this line when you've read it.

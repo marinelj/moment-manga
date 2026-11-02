@@ -30,6 +30,20 @@ VIDEO_KF_INTERVAL = float(env("VIDEO_KF_INTERVAL", "0.5"))      # seconds betwee
 VIDEO_MAX_SECONDS = float(env("VIDEO_MAX_SECONDS", "15"))       # longer clips are refused for "all"
 VIDEO_ORDER_BUDGET_USD = float(env("VIDEO_ORDER_BUDGET_USD", "4.00"))  # hard stop per order
 VIDEO_STYLE_REF = Path(env("VIDEO_STYLE_REF", str(Path(__file__).resolve().parent / "assets" / "style_slamdunk.png")))
+# live: paid orders run the real (paid) Gemini pipelines.
+# sample: paid orders get sample files instead, so payments can be tested without model costs.
+# Default is sample whenever Alipay runs against its sandbox.
+ALIPAY_ENV = env("ALIPAY_ENV", "sandbox")
+
+
+def generation_mode(explicit: str | None, provider: str, alipay_env: str) -> str:
+    chosen = (explicit or "").strip().lower()
+    if chosen:
+        return chosen
+    return "sample" if provider == "alipay_web" and alipay_env == "sandbox" else "live"
+
+
+GENERATION_MODE = generation_mode(env("GENERATION_MODE"), PAYMENT_PROVIDER, ALIPAY_ENV)
 FONT_PATH = env("FONT_PATH", "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)

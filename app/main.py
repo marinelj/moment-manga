@@ -32,9 +32,13 @@ def healthz():
 
 
 def checkout_ready() -> bool:
-    """Do not offer paid orders when the PDF worker cannot run."""
-    return (settings.PAYMENT_PROVIDER == "alipay_web" and bool(settings.GEMINI_API_KEY)
-            and bool(shutil.which("ffmpeg")) and bool(shutil.which("ffprobe")))
+    """Do not offer paid orders when the worker cannot fulfil them."""
+    if settings.PAYMENT_PROVIDER != "alipay_web" or settings.GENERATION_MODE not in ("live", "sample"):
+        return False
+    if settings.GENERATION_MODE == "sample" and settings.ALIPAY_ENV == "production":
+        return False          # never take real money for sample files
+    tools = bool(shutil.which("ffmpeg")) and bool(shutil.which("ffprobe"))
+    return tools and (settings.GENERATION_MODE == "sample" or bool(settings.GEMINI_API_KEY))
 
 
 def validate_video(path: Path) -> float:
@@ -81,6 +85,7 @@ def config():
             "max_upload_mb": settings.MAX_UPLOAD_MB,
             "video_max_seconds": settings.VIDEO_MAX_SECONDS,
             "checkout_ready": ready,
+            "generation": settings.GENERATION_MODE,
             "products": list(provider.prices) if ready else [],
             "charges": {product: {"amount": amount, "currency": "CNY"}
                         for product, amount in provider.prices.items()}

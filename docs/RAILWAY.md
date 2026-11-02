@@ -25,6 +25,8 @@ DATA_DIR=/data
 MAX_UPLOAD_MB=300
 ```
 
+With `ALIPAY_ENV=sandbox`, paid test orders get sample files (a one-page PDF marked SAMPLE and the demo clip) and make no Gemini calls, so testing payments costs nothing. To test real manga generation on the sandbox, add `GENERATION_MODE=live`; each order then costs real model money (about $1–2 for a book, $3–4 more for the video). Production always generates for real; `GENERATION_MODE=sample` closes checkout there.
+
 Leave `ALIPAY_NOTIFY_URL` empty for this sandbox deployment. The order status route reconciles payment with Alipay trade query. Production requires a public HTTPS notification endpoint and separate production credentials.
 
 After setting the service variables, deploy the commit and open the Railway domain. The home, book preview, checkout form, API, and payment return route will share that origin. Checkout becomes available when `/api/config` reports `checkout_ready: true`.
