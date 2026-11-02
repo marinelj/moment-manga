@@ -4,7 +4,7 @@ The browser uses these endpoints when served by the FastAPI application. GitHub 
 
 ## Checkout readiness
 
-`GET /api/config` returns `checkout_ready`, `products`, `charges`, `max_upload_mb`, and `video_max_seconds`. The server returns `checkout_ready: false`, no products, and no charges unless Alipay web payment is configured and the manga worker has a Gemini key, `ffmpeg`, and `ffprobe`. An available book charge has this shape:
+`GET /api/config` returns `checkout_ready`, `products`, `charges`, `max_upload_mb`, `video_max_seconds`, and `generation` (`live`, or `sample` when paid orders receive sample files instead of generated manga; the page may show a "test mode" note when it is `sample`). The server returns `checkout_ready: false`, no products, and no charges unless Alipay web payment is configured and the manga worker has a Gemini key, `ffmpeg`, and `ffprobe`. An available book charge has this shape:
 
 ```json
 {"products":["book","all"],"charges":{"book":{"amount":"39.00","currency":"CNY"},"all":{"amount":"79.00","currency":"CNY"}}}
@@ -29,7 +29,7 @@ The response is `{"id":"...","status":"unpaid","payment":{"pay_url":"/api/orders
 
 ## Status and fulfillment
 
-`GET /api/orders/{id}` requires the buyer cookie for Alipay web orders. It returns `id`, `status`, and `progress`. An unpaid order also returns its payment object. Status values are `unpaid`, `paid`, `processing`, `done`, and `failed`. A done order returns `downloads.book` pointing to `/api/orders/{id}/manga.pdf`. A done `all` order also returns `downloads.clip` pointing to `/api/orders/{id}/manga.mp4`. Both downloads require the same buyer cookie. For `all`, `progress` runs 0 to 30 while the book is made and 30 to 100 while the video is made; expect about 10 to 20 minutes in total.
+`GET /api/orders/{id}` requires the buyer cookie for Alipay web orders. It returns `id`, `status`, and `progress`. An unpaid order also returns its payment object. Status values are `unpaid`, `paid`, `processing`, `done`, and `failed`. An order created while `generation` is `sample` also returns `payment_test: true` for its whole life: show it as a payment test (the files are samples, not generated manga) rather than "drawing your moment". A done order returns `downloads.book` pointing to `/api/orders/{id}/manga.pdf`. A done `all` order also returns `downloads.clip` pointing to `/api/orders/{id}/manga.mp4`. Both downloads require the same buyer cookie. For `all`, `progress` runs 0 to 30 while the book is made and 30 to 100 while the video is made; expect about 10 to 20 minutes in total.
 
 The asynchronous `POST /api/pay/notify` verifies the RSA2 signature, application, seller, order number, amount, and trade state before a paid transition. Repeated notifications are idempotent. The status endpoint periodically queries Alipay for an unpaid order to reconcile a missing notification. The browser return route only reports status.
 
