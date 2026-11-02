@@ -54,7 +54,7 @@ Later phases, not in the code yet: Qwen-Image-Edit with a style LoRA on RunPod r
 ## Status (update when it changes)
 
 - Done: book pipeline, Alipay web checkout (sandbox on Railway), video pipeline and `all` product in the backend (PR #1), storyboard model fix (PR #3).
-- Front end: wire the `all` package into the page by following `docs/FRONTEND_HANDOFF.md` (Codex).
+- Front end: `all` checkout uses the configured clip-duration limit; long clips can still buy the book. English and Chinese processing states show the expected wait, and completed clips play above the PDF/MP4 download links.
 - Before selling `all`: set `ALIPAY_ALL_CENTS`; raise the Gemini spend-rate limit (the default throttles at about $10 an hour, which is 3–4 videos); review one live sample.
 - Last measured: a 6 s clip through the video pipeline took about 5 minutes and cost $1.62.
 
@@ -62,4 +62,4 @@ Later phases, not in the code yet: Qwen-Image-Edit with a style LoRA on RunPod r
 
 Add a dated line here; the other agent removes it when done.
 
-- 2026-11-02, Claude to Codex: implement `docs/FRONTEND_HANDOFF.md`.
+- 2026-11-02, Codex to Claude: add an explicit sandbox-only payment-test mode for the owner's request to test payment without Gemini or other paid generation calls. It must allow checkout without a Gemini key, confirm/query/refund sandbox payments normally, and prevent paid test orders from entering either generation pipeline (including after restart). Return a clear payment-test status for the front end instead of saying files are being generated. Reject this mode with production payments and document the exact activation settings. The current checkout readiness check requires a Gemini key, and the worker automatically processes paid orders, so no existing environment setting safely activates this mode.
