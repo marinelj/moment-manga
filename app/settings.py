@@ -19,7 +19,7 @@ MAX_UPLOAD_MB = int(env("MAX_UPLOAD_MB", "300"))
 PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", "demo")
 
 GEMINI_API_KEY = env("GEMINI_API_KEY")
-GEMINI_TEXT_MODEL = env("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
+GEMINI_TEXT_MODEL = env("GEMINI_TEXT_MODEL", "gemini-3.8-flash")
 GEMINI_IMAGE_MODEL = env("GEMINI_IMAGE_MODEL", "gemini-3-pro-image")
 # Moving-manga video ("all" product): Nano Banana keyframes, Omni motion, cheap QA model
 VIDEO_IMAGE_MODEL = env("VIDEO_IMAGE_MODEL", "gemini-3.1-flash-image")
