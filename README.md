@@ -2,7 +2,7 @@
 
 Moment Manga turns a short basketball clip into a 3–5 page black-and-white manga PDF. The English page is at `/`; the Chinese page is at `/zh/`. Buyers can upload a clip and an optional lead-character photo, pay through Alipay AI web application payment, and download the PDF when generation finishes.
 
-The **manga book** is the only product currently available for checkout. The book-and-redrawn-video package is shown as coming soon because video redrawing and delivery are not implemented. GitHub Pages serves a static preview; it cannot process uploads or payments.
+Two products exist: the **manga book** (`book`) and **Everything** (`all`: the book plus the clip redrawn as a moving manga MP4). The backend for both is implemented; `all` goes on sale when `ALIPAY_ALL_CENTS` is set. Agents working on this repository start with [AGENTS.md](AGENTS.md). GitHub Pages serves a static preview; it cannot process uploads or payments.
 
 ## Showcase assets to add
 
