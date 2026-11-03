@@ -190,7 +190,7 @@ def test_all_package_order_status_and_video_download(checkout, store, monkeypatc
     assert checkout.get(status["downloads"]["clip"]).status_code == 200
     assert TestClient(main.app).get(status["downloads"]["clip"]).status_code == 403
 
-    monkeypatch.setattr(settings, "env", lambda name, default=None: "secret" if name == "ALIPAY_ADMIN_TOKEN" else default)
+    monkeypatch.setattr(settings, "env", lambda name, default=None: "secret" if name == "ADMIN_TOKEN" else default)
     db.add_cost(oid, "keyframe", "m", 1, 0.067)
     costs = checkout.get(f"/api/admin/orders/{oid}/costs", headers={"authorization": "Bearer secret"}).json()
     assert costs["total_usd"] == 0.067 and costs["lines"][0]["step"] == "keyframe"

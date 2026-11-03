@@ -12,7 +12,7 @@ The server receives notifications at `POST /api/pay/notify`. It verifies the SDK
 
 ## Production setup
 
-Configure one approved production application with `ALIPAY_ENV=production`, `ALIPAY_APP_ID`, `ALIPAY_SELLER_ID`, raw PKCS#1 `ALIPAY_APP_PRIVATE_KEY`, and `ALIPAY_PUBLIC_KEY`. Keep all values in server secret storage; never place them in `web/` or commit them. Set a public HTTPS `PUBLIC_URL` and `ALIPAY_NOTIFY_URL` pointing to the deployed `/api/pay/notify`. Production startup rejects an HTTP public or notification URL. Configure a strong `ALIPAY_ADMIN_TOKEN` for the protected query, refund, refund query, and close routes. Do not share it with the browser.
+Configure one approved production application with `ALIPAY_ENV=production`, `ALIPAY_APP_ID`, `ALIPAY_SELLER_ID`, raw PKCS#1 `ALIPAY_APP_PRIVATE_KEY`, and `ALIPAY_PUBLIC_KEY`. Keep all values in server secret storage; never place them in `web/` or commit them. Set a public HTTPS `PUBLIC_URL` and `ALIPAY_NOTIFY_URL` pointing to the deployed `/api/pay/notify`. Production startup rejects an HTTP public or notification URL. Configure a strong `ADMIN_TOKEN` for the protected query, refund, refund query, and close routes. Do not share it with the browser.
 
 Before production sales, approve the CNY amount and any USD to CNY pricing policy, complete a real HTTPS notification test, and verify a small transaction and refund using the approved application. Sandbox configuration and a local payment form alone do not establish production readiness.
 
