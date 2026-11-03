@@ -33,7 +33,7 @@ def admin(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "ALIPAY_ENV", "sandbox")
     monkeypatch.setattr(settings, "GENERATION_MODE", "sample")
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "key")
-    monkeypatch.setattr(settings, "env", lambda name, default=None: "tok" if name == "ALIPAY_ADMIN_TOKEN" else default)
+    monkeypatch.setattr(settings, "env", lambda name, default=None: "tok" if name == "ADMIN_TOKEN" else default)
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/" + name)
     monkeypatch.setattr(main, "provider", FakeAlipay())
     monkeypatch.setattr(main, "validate_video", lambda path: 10.0)

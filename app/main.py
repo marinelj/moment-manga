@@ -314,7 +314,7 @@ def alipay_return(request: Request):
 def _require_admin(request: Request) -> None:
     if settings.PAYMENT_PROVIDER != "alipay_web":
         raise HTTPException(404)
-    expected = settings.env("ALIPAY_ADMIN_TOKEN")
+    expected = settings.env("ADMIN_TOKEN") or settings.env("ALIPAY_ADMIN_TOKEN")  # old name still accepted
     if not expected:
         raise HTTPException(503, "Payment administration is not configured")
     supplied = request.headers.get("authorization", "")
@@ -333,7 +333,7 @@ class GenerationChoice(BaseModel):
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page():
-    """Debug page. The page itself is public; every action needs ALIPAY_ADMIN_TOKEN."""
+    """Debug page. The page itself is public; every action needs ADMIN_TOKEN."""
     return HTMLResponse((Path(__file__).resolve().parent / "admin.html").read_text(encoding="utf-8"),
                         headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
