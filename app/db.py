@@ -49,6 +49,34 @@ _conn.execute("""CREATE TABLE IF NOT EXISTS order_costs (
 _conn.commit()
 
 
+_conn.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated REAL NOT NULL)")
+_conn.commit()
+
+
+def get_setting(key: str) -> str | None:
+    with _lock:
+        row = _conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+    return row[0] if row else None
+
+
+def set_setting(key: str, value: str | None) -> None:
+    with _lock:
+        if value is None:
+            _conn.execute("DELETE FROM app_settings WHERE key=?", (key,))
+        else:
+            _conn.execute("INSERT INTO app_settings VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated=excluded.updated",
+                          (key, value, time.time()))
+        _conn.commit()
+
+
+def recent_orders(limit: int = 20) -> list[dict]:
+    with _lock:
+        rows = _conn.execute("""SELECT o.id, o.created, o.product, o.status, o.progress, o.generation, o.amount_yuan,
+                o.error, COALESCE((SELECT SUM(usd) FROM order_costs c WHERE c.order_id=o.id), 0) AS cost_usd
+            FROM orders o ORDER BY o.created DESC LIMIT ?""", (limit,)).fetchall()
+    return [dict(row) for row in rows]
+
+
 def add_cost(oid: str, step: str, model: str, units: float, usd: float, cached: bool = False) -> None:
     """Cost ledger: one row per paid model call (cached reuse is logged at $0)."""
     with _lock:

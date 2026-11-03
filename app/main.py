@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
-from . import db, payments, settings, worker
+from . import db, modes, payments, settings, worker
 
 THEMES = {"sports", "travel", "portrait", "comedy"}
 STYLES = {"miyazaki", "naruto", "slamdunk", "demonslayer", "onepiece"}
@@ -33,12 +33,13 @@ def healthz():
 
 def checkout_ready() -> bool:
     """Do not offer paid orders when the worker cannot fulfil them."""
-    if settings.PAYMENT_PROVIDER != "alipay_web" or settings.GENERATION_MODE not in ("live", "sample"):
+    mode = modes.current()
+    if settings.PAYMENT_PROVIDER != "alipay_web" or mode not in ("live", "sample"):
         return False
-    if settings.GENERATION_MODE == "sample" and settings.ALIPAY_ENV == "production":
-        return False          # never take real money for sample files
+    if mode == "sample" and settings.ALIPAY_ENV == "production" and not settings.ALLOW_PRODUCTION_PAYMENT_TEST:
+        return False          # real money for sample files only with the explicit test flag
     tools = bool(shutil.which("ffmpeg")) and bool(shutil.which("ffprobe"))
-    return tools and (settings.GENERATION_MODE == "sample" or bool(settings.GEMINI_API_KEY))
+    return tools and (mode == "sample" or bool(settings.GEMINI_API_KEY))
 
 
 def validate_video(path: Path) -> float:
@@ -85,7 +86,7 @@ def config():
             "max_upload_mb": settings.MAX_UPLOAD_MB,
             "video_max_seconds": settings.VIDEO_MAX_SECONDS,
             "checkout_ready": ready,
-            "generation": settings.GENERATION_MODE,
+            "generation": modes.current(),
             "products": list(provider.prices) if ready else [],
             "charges": {product: {"amount": amount, "currency": "CNY"}
                         for product, amount in provider.prices.items()}
@@ -151,7 +152,7 @@ async def create_order(video: UploadFile = File(...), theme: str | None = Form(N
             except (UnidentifiedImageError, OSError, ValueError) as exc:
                 raise HTTPException(400, "Invalid photo") from exc
         order = db.create(theme, style, "", lang)
-        db.update(order["id"], generation=settings.GENERATION_MODE)   # fixed for the order's lifetime
+        db.update(order["id"], generation=modes.current())   # fixed for the order's lifetime
         path = uploads / f"{order['id']}{Path(video.filename or '').suffix.lower() or '.mp4'}"
         shutil.move(tmp, path)
         photo_path = None
@@ -314,6 +315,39 @@ def _require_admin(request: Request) -> None:
 class RefundRequest(BaseModel):
     amount: str
     out_request_no: str
+
+
+class GenerationChoice(BaseModel):
+    mode: str | None     # "live", "sample", or null to go back to the GENERATION_MODE setting
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page():
+    """Debug page. The page itself is public; every action needs ALIPAY_ADMIN_TOKEN."""
+    return HTMLResponse((Path(__file__).resolve().parent / "admin.html").read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+
+@app.get("/api/admin/status")
+def admin_status(request: Request):
+    _require_admin(request)
+    override = db.get_setting(modes.KEY)
+    return {"mode": modes.current(), "mode_source": "admin page" if override else "GENERATION_MODE setting",
+            "env_mode": settings.GENERATION_MODE, "alipay_env": settings.ALIPAY_ENV,
+            "checkout_ready": checkout_ready(), "gemini_key_set": bool(settings.GEMINI_API_KEY),
+            "production_payment_test_allowed": settings.ALLOW_PRODUCTION_PAYMENT_TEST,
+            "prices": dict(getattr(provider, "prices", {})),
+            "orders": db.recent_orders(20)}
+
+
+@app.post("/api/admin/generation")
+def admin_set_generation(body: GenerationChoice, request: Request):
+    _require_admin(request)
+    try:
+        modes.set_override(body.mode)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"mode": modes.current(), "checkout_ready": checkout_ready()}
 
 
 @app.get("/api/admin/orders/{oid}/costs")
