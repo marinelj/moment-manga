@@ -22,6 +22,12 @@ STYLES = {"miyazaki", "naruto", "slamdunk", "demonslayer", "onepiece"}
 WEB = Path(__file__).resolve().parent.parent / "web"
 
 app = FastAPI(title="Moment Manga")
+if settings.CORS_ORIGINS:
+    from fastapi.middleware.cors import CORSMiddleware
+    # Only the listed sites may call the API from a browser. Buyers prove access with the
+    # X-Buyer-Token header (cross-site cookies are blocked by Safari), admins with their Bearer token.
+    app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS, allow_credentials=True,
+                       allow_methods=["GET", "POST"], allow_headers=["authorization", "content-type", "x-buyer-token"])
 provider = payments.load()
 app.mount("/demo", StaticFiles(directory=WEB / "demo"), name="demo")
 
@@ -169,7 +175,8 @@ async def create_order(video: UploadFile = File(...), theme: str | None = Form(N
                   provider="alipay_web", product=product, amount_yuan=provider.prices[product],
                   app_id=provider.app_id, seller_id=provider.seller_id,
                   buyer_token_hash=hashlib.sha256(token.encode()).hexdigest())
-        result = JSONResponse({"id": order["id"], "status": "unpaid", "payment": provider.payment(db.get(order["id"]))})
+        result = JSONResponse({"id": order["id"], "status": "unpaid", "payment": provider.payment(db.get(order["id"])),
+                               "buyer_token": token})
         result.set_cookie(f"mm_buyer_{order['id']}", token, httponly=True, samesite="lax",
                           secure=settings.PUBLIC_URL.startswith("https://"), path="/api", max_age=30 * 86400)
         return result
@@ -254,7 +261,10 @@ async def pay_notify(request: Request):
 
 
 def _require_buyer(request: Request, order: dict) -> None:
-    token = request.cookies.get(f"mm_buyer_{order['id']}", "")
+    # Same-site pages use the cookie; a page on another origin sends the token from the order
+    # response as X-Buyer-Token, or as ?t= on links (payment page, downloads).
+    token = (request.cookies.get(f"mm_buyer_{order['id']}", "") or request.headers.get("x-buyer-token", "")
+             or request.query_params.get("t", ""))
     actual = hashlib.sha256(token.encode()).hexdigest()
     if not token or not secrets.compare_digest(actual, order.get("buyer_token_hash") or ""):
         raise HTTPException(403, "Order access denied")

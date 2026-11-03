@@ -8,6 +8,8 @@ def env(name: str, default: str | None = None) -> str | None:
 
 
 DATA_DIR = Path(env("DATA_DIR", "./data")).resolve()
+# Pages on other origins (e.g. https://marinelj.github.io) that may call this API. Comma-separated.
+CORS_ORIGINS = [o.strip().rstrip("/") for o in (env("CORS_ORIGINS") or "").split(",") if o.strip()]
 PUBLIC_URL = env("PUBLIC_URL", "http://localhost:8000").rstrip("/")
 
 PRICE_CENTS = int(env("PRICE_CENTS", "3900"))          # ¥39.00

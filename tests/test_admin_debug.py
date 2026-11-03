@@ -74,3 +74,34 @@ def test_real_money_with_sample_files_needs_the_explicit_flag(admin, monkeypatch
     assert main.checkout_ready() is True              # no Gemini key, no Gemini cost
     modes.set_override("live")
     assert main.checkout_ready() is False             # real generation needs the key
+
+
+def test_buyer_can_use_the_token_header_or_link_from_another_origin(admin, tmp_path):
+    created = admin.post("/api/orders", files={"video": ("a.mp4", b"v", "video/mp4")}, data={"product": "book", "lang": "en"}).json()
+    token, oid = created["buyer_token"], created["id"]
+    stranger = TestClient(main.app)            # no cookie, like a page on github.io
+    assert stranger.get(f"/api/orders/{oid}").status_code == 403
+    assert stranger.get(f"/api/orders/{oid}", headers={"x-buyer-token": token}).status_code == 200
+    assert stranger.get(f"/api/orders/{oid}", headers={"x-buyer-token": "wrong"}).status_code == 403
+    (tmp_path / "m.pdf").write_bytes(b"%PDF-1.4\n")
+    db.update(oid, status="done", result=str(tmp_path / "m.pdf"))
+    assert stranger.get(f"/api/orders/{oid}/manga.pdf?t={token}").status_code == 200
+
+
+def test_cors_allows_only_listed_origins(tmp_path):
+    import os
+    import subprocess
+    import sys
+    code = """
+from fastapi.testclient import TestClient
+from app import main
+c = TestClient(main.app)
+h = {"Origin": "https://marinelj.github.io", "Access-Control-Request-Method": "GET",
+     "Access-Control-Request-Headers": "authorization"}
+ok = c.options("/api/admin/status", headers=h)
+bad = c.options("/api/admin/status", headers={**h, "Origin": "https://evil.example"})
+assert ok.headers.get("access-control-allow-origin") == "https://marinelj.github.io", ok.headers
+assert "access-control-allow-origin" not in bad.headers
+"""
+    env = {**os.environ, "CORS_ORIGINS": "https://marinelj.github.io", "DATA_DIR": str(tmp_path)}
+    subprocess.run([sys.executable, "-c", code], check=True, env=env, cwd=os.path.dirname(os.path.dirname(__file__)))
