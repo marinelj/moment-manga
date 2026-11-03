@@ -15,8 +15,8 @@ button.on{background:var(--ink);color:#fff}button:disabled{opacity:.5;cursor:def
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
 .scroll{overflow-x:auto}#msg{min-height:20px;margin-top:8px}
 </style></head><body><main>
-<h1>Moment Manga admin</h1><div class="muted">Debug page. Every action needs the admin token (ADMIN_TOKEN on the server).</div>
-<div class="card row"><input id="server" type="url" placeholder="Server address, e.g. https://marine-api.tunnel.tungo.cn/manga" autocomplete="off"><input id="token" type="password" placeholder="Admin token" autocomplete="off"><button id="load">Open</button></div>
+<h1>Moment Manga admin</h1><div class="muted">Debug page.</div>
+<div class="card row"><input id="server" type="url" placeholder="Server address, e.g. https://marine-api.tunnel.tungo.cn/manga" autocomplete="off"><button id="load">Open</button></div>
 <div id="err" class="warn" role="alert"></div>
 <div id="panel" hidden>
 <h2>Gemini calls</h2>
@@ -31,15 +31,15 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <h2>Recent orders</h2><div class="card scroll"><table><thead><tr><th>Created</th><th>Order</th><th>Product</th><th>CNY</th><th>Mode</th><th>Status</th><th>Model cost</th></tr></thead><tbody id="orders"></tbody></table></div>
 </div>
 <script>
-const $=id=>document.getElementById(id);let token="";
+const $=id=>document.getElementById(id);
 // Served by the backend itself: same origin. On GitHub Pages: the saved or default server address.
 const onBackend=location.pathname.replace(/\/$/,"").endsWith("/admin")&&!location.hostname.endsWith("github.io");
 // On the backend, call the API under the same prefix the page was served from (e.g. /manga behind the gateway).
 let base=onBackend?location.pathname.replace(/\/$/,"").replace(/\/admin$/,""):"https://marine-api.tunnel.tungo.cn/manga";
-try{if(!onBackend)base=(localStorage.getItem("mm_api")??base).replace(/\/$/,"");token=sessionStorage.getItem("mm_admin")||""}catch(e){}
-$("server").value=base;$("token").value=token;$("server").hidden=onBackend;
-async function api(path,opts={}){const r=await fetch(base+path,{...opts,headers:{"authorization":"Bearer "+token,"content-type":"application/json"},cache:"no-store"});
- if(!r.ok)throw new Error(r.status===403?"Wrong token":r.status===0?"Server unreachable":r.status===404?"Admin needs PAYMENT_PROVIDER=alipay_web":"Error "+r.status);return r.json()}
+try{if(!onBackend)base=(localStorage.getItem("mm_api")??base).replace(/\/$/,"")}catch(e){}
+$("server").value=base;$("server").hidden=onBackend;
+async function api(path,opts={}){const r=await fetch(base+path,{...opts,headers:{"content-type":"application/json"},cache:"no-store"});
+ if(!r.ok)throw new Error(r.status===0?"Server unreachable":r.status===404?"Admin needs PAYMENT_PROVIDER=alipay_web":"Error "+r.status);return r.json()}
 function text(tag,value){const el=document.createElement(tag);el.textContent=value;return el}
 async function refresh(){const s=await api("/api/admin/status");$("panel").hidden=false;
  $("mode").textContent=s.mode==="live"?"REAL GEMINI":"MOCKED";$("mode").className="pill "+s.mode;
@@ -54,11 +54,11 @@ async function refresh(){const s=await api("/api/admin/status");$("panel").hidde
  const tb=$("orders");tb.replaceChildren();s.orders.forEach(o=>{const tr=document.createElement("tr");
   [new Date(o.created*1000).toLocaleString(),o.id.slice(0,8),o.product||"",o.amount_yuan||"",o.generation||"",o.status+(o.status==="processing"?" "+o.progress+"%":""),"$"+Number(o.cost_usd).toFixed(2)].forEach(v=>tr.append(text("td",v)));
   if(o.error)tr.title=o.error;tb.append(tr)})}
-$("load").onclick=async()=>{token=$("token").value.trim();if(!onBackend)base=$("server").value.trim().replace(/\/$/,"");
- try{sessionStorage.setItem("mm_admin",token);if(!onBackend)localStorage.setItem("mm_api",base)}catch(e){}
+$("load").onclick=async()=>{if(!onBackend)base=$("server").value.trim().replace(/\/$/,"");
+ try{if(!onBackend)localStorage.setItem("mm_api",base)}catch(e){}
  try{await refresh();$("msg").textContent=""}catch(e){$("panel").hidden=true;$("err").textContent=e.message==="Failed to fetch"?"Cannot reach the server. Check the address, that the server is running, and that CORS_ORIGINS includes this site.":e.message}};
 document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=async()=>{const mode=b.dataset.mode||null;
  if(mode==="live"&&b.dataset.armed!=="1"){b.dataset.armed="1";b.textContent="Click again: real Gemini costs money";setTimeout(()=>{b.dataset.armed="";b.textContent="Real Gemini (costs money)"},5000);return}b.dataset.armed="";
  try{await api("/api/admin/generation",{method:"POST",body:JSON.stringify({mode})});await refresh();$("msg").textContent="Saved."}catch(e){$("msg").textContent=e.message}});
-if(token)$("load").click();setInterval(()=>{if(!$("panel").hidden)refresh().catch(()=>{})},10000);
+$("load").click();setInterval(()=>{if(!$("panel").hidden)refresh().catch(()=>{})},10000);
 </script></main></body></html>

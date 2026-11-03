@@ -322,6 +322,13 @@ def _require_admin(request: Request) -> None:
         raise HTTPException(403)
 
 
+def _require_debug() -> None:
+    """The debug page and its routes are open, with no token (owner's choice, 2026-11-03).
+    Refund and other Alipay admin routes still use _require_admin."""
+    if settings.PAYMENT_PROVIDER != "alipay_web":
+        raise HTTPException(404)
+
+
 class RefundRequest(BaseModel):
     amount: str
     out_request_no: str
@@ -333,14 +340,14 @@ class GenerationChoice(BaseModel):
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page():
-    """Debug page. The page itself is public; every action needs ADMIN_TOKEN."""
+    """Debug page: no token. Anyone with the address can switch mocked/real Gemini."""
     return HTMLResponse((Path(__file__).resolve().parent / "admin.html").read_text(encoding="utf-8"),
                         headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
 
 @app.get("/api/admin/status")
 def admin_status(request: Request):
-    _require_admin(request)
+    _require_debug()
     override = db.get_setting(modes.KEY)
     return {"mode": modes.current(), "mode_source": "admin page" if override else "GENERATION_MODE setting",
             "env_mode": settings.GENERATION_MODE, "alipay_env": settings.ALIPAY_ENV,
@@ -352,7 +359,7 @@ def admin_status(request: Request):
 
 @app.post("/api/admin/generation")
 def admin_set_generation(body: GenerationChoice, request: Request):
-    _require_admin(request)
+    _require_debug()
     try:
         modes.set_override(body.mode)
     except ValueError as exc:
@@ -363,7 +370,7 @@ def admin_set_generation(body: GenerationChoice, request: Request):
 @app.get("/api/admin/orders/{oid}/costs")
 def admin_order_costs(oid: str, request: Request):
     """What an order cost us in model calls, line by line."""
-    _require_admin(request)
+    _require_debug()
     order = db.get(oid)
     if not order:
         raise HTTPException(404)
