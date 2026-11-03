@@ -2,6 +2,8 @@
 
 The browser uses these endpoints when served by the FastAPI application. GitHub Pages is a static preview and cannot reach a same-origin API. Two products exist: `book` (PDF) and `all` (PDF plus redrawn video). `all` is offered only when `ALIPAY_ALL_CENTS` is set.
 
+The shared local public gateway mounts the application at `https://marine-api.tunnel.tungo.cn/manga/`. Public callers therefore use `/manga/api/config`, `/manga/api/orders`, and the other paths below with the `/manga` prefix. The gateway adjusts root-relative response URLs, buyer-cookie paths, and redirects; `PUBLIC_URL` includes the public `/manga` base so the SDK signs the correct payment return URL. Gateway administration is at `/admin/`; the application's existing payment-admin endpoints remain under `/manga/api/admin/` with their existing authorization requirements. This local instance remains in sandbox/sample mode.
+
 ## Checkout readiness
 
 `GET /api/config` returns `checkout_ready`, `products`, `charges`, `max_upload_mb`, `video_max_seconds`, and `generation` (`live`, or `sample` when paid orders receive sample files instead of generated manga; the page shows a "test mode" note when it is `sample`). The server returns `checkout_ready: false`, no products, and no charges unless Alipay web payment is configured and the worker has `ffmpeg` and `ffprobe`. Live generation also requires a Gemini key. Sandbox sample mode does not require one; sample mode closes checkout in production. An available book charge has this shape:
