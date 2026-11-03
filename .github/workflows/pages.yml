@@ -6,7 +6,7 @@ name: Pages preview
 on:
   push:
     branches: [main]
-    paths: ["web/**", "scripts/build_site.sh", ".github/workflows/pages.yml"]
+    paths: ["web/**", "app/admin.html", "scripts/build_site.sh", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:

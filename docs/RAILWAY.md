@@ -25,7 +25,7 @@ DATA_DIR=/data
 MAX_UPLOAD_MB=300
 ```
 
-With `ALIPAY_ENV=sandbox`, paid test orders get sample files (a one-page PDF marked SAMPLE and the demo clip) and make no Gemini calls, so testing payments costs nothing. To test real manga generation on the sandbox, add `GENERATION_MODE=live`; each order then costs real model money (about $1–2 for a book, $3–4 more for the video). Production always generates for real; `GENERATION_MODE=sample` closes checkout there.
+With `ALIPAY_ENV=sandbox`, paid test orders get sample files (a one-page PDF marked SAMPLE and the demo clip) and make no Gemini calls, so testing payments costs nothing. To test real manga generation on the sandbox, add `GENERATION_MODE=live`; each order then costs real model money (about $1–2 for a book, $3–4 more for the video). Production generates for real by default. For a real-money payment test without model costs, also set `ALLOW_PRODUCTION_PAYMENT_TEST=1`, a tiny price such as `ALIPAY_BOOK_CENTS=1` (¥0.01), and switch to mocked on `/admin`; remove the flag before launch. `/admin` (token `ALIPAY_ADMIN_TOKEN`) switches between mocked and real Gemini at any time without a redeploy.
 
 Leave `ALIPAY_NOTIFY_URL` empty for this sandbox deployment. The order status route reconciles payment with Alipay trade query. Production requires a public HTTPS notification endpoint and separate production credentials.
 

@@ -34,7 +34,7 @@ def run(order: dict, with_video: bool) -> tuple[Path, Path | None]:
     lines = ["Sandbox test order " + order["id"][:8],
              "Payment worked. No manga was generated,",
              "so no model costs were spent.",
-             "Set GENERATION_MODE=live for real output."]
+             "Switch to real generation on /admin."]
     for i, line in enumerate(lines):
         draw.text((pipeline.PAGE_W // 2, 420 + i * 70), line, font=small, fill="black", anchor="mm")
     if order.get("video"):

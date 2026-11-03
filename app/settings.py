@@ -8,6 +8,8 @@ def env(name: str, default: str | None = None) -> str | None:
 
 
 DATA_DIR = Path(env("DATA_DIR", "./data")).resolve()
+# Pages on other origins (e.g. https://marinelj.github.io) that may call this API. Comma-separated.
+CORS_ORIGINS = [o.strip().rstrip("/") for o in (env("CORS_ORIGINS") or "").split(",") if o.strip()]
 PUBLIC_URL = env("PUBLIC_URL", "http://localhost:8000").rstrip("/")
 
 PRICE_CENTS = int(env("PRICE_CENTS", "3900"))          # ¥39.00
@@ -44,6 +46,9 @@ def generation_mode(explicit: str | None, provider: str, alipay_env: str) -> str
 
 
 GENERATION_MODE = generation_mode(env("GENERATION_MODE"), PAYMENT_PROVIDER, ALIPAY_ENV)
+# Real-money payment test: allow sample mode with ALIPAY_ENV=production (sample files, no model costs).
+# Off unless set to 1, so customers are never charged for sample files by accident.
+ALLOW_PRODUCTION_PAYMENT_TEST = env("ALLOW_PRODUCTION_PAYMENT_TEST", "") == "1"
 FONT_PATH = env("FONT_PATH", "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)

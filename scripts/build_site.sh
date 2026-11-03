@@ -5,5 +5,6 @@ out="${1:-_site}"
 rm -rf "$out" && mkdir -p "$out/zh"
 cp web/index.html "$out/index.html"
 cp -r web/demo "$out/demo"
+mkdir -p "$out/admin" && cp app/admin.html "$out/admin/index.html"   # owner debug page; the backend serves the same file at /admin
 sed 's/<html lang="en"/<html lang="zh-CN"/' web/index.html > "$out/zh/index.html"
 grep -q 'lang="zh-CN"' "$out/zh/index.html"

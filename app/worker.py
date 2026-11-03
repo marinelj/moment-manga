@@ -5,7 +5,7 @@ import time
 import traceback
 from pathlib import Path
 
-from . import db, pipeline, sample, settings, video
+from . import db, modes, pipeline, sample, settings, video
 
 
 def _cleanup_uploads():
@@ -42,7 +42,7 @@ def process(order: dict) -> None:
     book_share = 30 if with_video else 100
     # The mode recorded when the order was created wins, so a test order never reaches the paid
     # pipelines even if the server restarts with GENERATION_MODE=live. Older orders use the setting.
-    if (order.get("generation") or settings.GENERATION_MODE) == "sample":
+    if (order.get("generation") or modes.current()) == "sample":
         try:
             pdf, mp4 = sample.run(order, with_video)
             db.update(oid, result=str(pdf), video_result=str(mp4) if mp4 else None, status="done", progress=100)

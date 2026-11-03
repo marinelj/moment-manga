@@ -25,7 +25,7 @@ The amount above is an API example, not a price choice. The server reads the app
 
 For `all`, the clip must be at most `video_max_seconds` (default 15) or the server answers 400 and creates no order.
 
-The response is `{"id":"...","status":"unpaid","payment":{"pay_url":"/api/orders/.../pay","charge":{"amount":"...","currency":"CNY"}}}`. It sets an HttpOnly buyer cookie scoped to `/api`. Opening `pay_url` with that cookie renders the SDK-signed Alipay POST form. The payment page is never an authority for order status.
+The response is `{"id":"...","status":"unpaid","payment":{"pay_url":"/api/orders/.../pay","charge":{"amount":"...","currency":"CNY"}}}`. It sets an HttpOnly buyer cookie scoped to `/api` and also returns `buyer_token`. A page on another origin (allowed by the server's `CORS_ORIGINS`) sends that token as the `X-Buyer-Token` header, or as `?t=<token>` on the payment and download links, instead of relying on the cookie. Opening `pay_url` with that cookie renders the SDK-signed Alipay POST form. The payment page is never an authority for order status.
 
 ## Status and fulfillment
 
