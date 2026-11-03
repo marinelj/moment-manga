@@ -1,7 +1,6 @@
-# Publishes web/index.html to GitHub Pages as a preview.
-# With no backend behind it, the page runs in demo mode without checkout.
+# Publishes the customer and admin pages; checkout uses the public sandbox API.
 # One-time setup: Settings → Pages → Source: GitHub Actions.
-name: Pages preview
+name: Pages
 
 on:
   push:
@@ -27,6 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: ./scripts/build_site.sh _site
+      - run: node --test web/checkout.test.mjs
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
