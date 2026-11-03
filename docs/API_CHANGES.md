@@ -35,7 +35,7 @@ The response is `{"id":"...","status":"unpaid","payment":{"pay_url":"/api/orders
 
 The asynchronous `POST /api/pay/notify` verifies the RSA2 signature, application, seller, order number, amount, and trade state before a paid transition. Repeated notifications are idempotent. The status endpoint periodically queries Alipay for an unpaid order to reconcile a missing notification. The browser return route only reports status.
 
-Administrative query, refund, refund query, and close endpoints are under `/api/admin/alipay` and require `Authorization: Bearer <ADMIN_TOKEN>`. `GET /api/admin/orders/{id}/costs` (same token) returns the order's model-call cost ledger: `total_usd` and one line per call with `step`, `model`, `units`, `usd`, and `cached`.
+Administrative query, refund, refund query, and close endpoints are under `/api/admin/alipay` and require `Authorization: Bearer <ADMIN_TOKEN>`. `GET /api/admin/status`, `POST /api/admin/generation` and `GET /api/admin/orders/{id}/costs` need no token (debug page). The costs route returns the order's model-call cost ledger: `total_usd` and one line per call with `step`, `model`, `units`, `usd`, and `cached`.
 
 ## Video pipeline
 

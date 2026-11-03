@@ -41,29 +41,27 @@ def admin(tmp_path, monkeypatch):
     conn.close()
 
 
-AUTH = {"authorization": "Bearer tok"}
 
 
-def test_page_loads_and_actions_need_the_token(admin):
+def test_debug_page_needs_no_token_but_refunds_do(admin):
     assert "Moment Manga admin" in admin.get("/admin").text
-    assert admin.get("/api/admin/status").status_code == 403
-    assert admin.post("/api/admin/generation", json={"mode": "live"}).status_code == 403
-    assert modes.current() == "sample"
+    assert admin.get("/api/admin/status").status_code == 200
+    assert admin.post("/api/admin/alipay/orders/x/refund", json={"amount": "0.01", "out_request_no": "r"}).status_code == 403
 
 
 def test_switch_applies_to_new_orders_only(admin):
     first = admin.post("/api/orders", files={"video": ("a.mp4", b"v", "video/mp4")}, data={"product": "book", "lang": "en"}).json()
-    assert admin.post("/api/admin/generation", json={"mode": "live"}, headers=AUTH).json()["mode"] == "live"
+    assert admin.post("/api/admin/generation", json={"mode": "live"}).json()["mode"] == "live"
     assert admin.get("/api/config").json()["generation"] == "live"
     second = admin.post("/api/orders", files={"video": ("a.mp4", b"v", "video/mp4")}, data={"product": "book", "lang": "en"}).json()
     assert db.get(first["id"])["generation"] == "sample" and db.get(second["id"])["generation"] == "live"
 
-    status = admin.get("/api/admin/status", headers=AUTH).json()
+    status = admin.get("/api/admin/status").json()
     assert status["mode"] == "live" and status["mode_source"] == "admin page"
     assert {o["id"] for o in status["orders"]} == {first["id"], second["id"]}
 
-    assert admin.post("/api/admin/generation", json={"mode": None}, headers=AUTH).json()["mode"] == "sample"
-    assert admin.post("/api/admin/generation", json={"mode": "free"}, headers=AUTH).status_code == 400
+    assert admin.post("/api/admin/generation", json={"mode": None}).json()["mode"] == "sample"
+    assert admin.post("/api/admin/generation", json={"mode": "free"}).status_code == 400
 
 
 def test_real_money_with_sample_files_needs_the_explicit_flag(admin, monkeypatch):
