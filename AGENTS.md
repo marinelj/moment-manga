@@ -23,7 +23,7 @@ The CNY amount charged comes only from server variables (`ALIPAY_BOOK_CENTS`, `A
 
 ## Architecture
 
-- FastAPI (`app/main.py`) serves the page and `/api/` on one origin. Deployment is Railway (see `docs/RAILWAY.md`): one replica, SQLite and files on the `/data` volume. GitHub Pages is a static preview with no checkout.
+- FastAPI (`app/main.py`) serves the page and `/api/` on one origin. Railway deployment is prepared (see `docs/RAILWAY.md`): one replica, SQLite and files on the `/data` volume. GitHub Pages hosts the customer page and uses the public gateway API for checkout.
 - Local public hosting also runs behind the shared gateway at `https://marine-api.tunnel.tungo.cn/manga/`: the gateway owns port 8080 and forwards to this app on loopback 18081. Gateway deployment and route registration live in the separate `public-api-gateway` repository; its LaunchAgent sets `PUBLIC_URL` to the public `/manga` base and keeps this local instance in sandbox/sample mode without a Gemini key.
 - `app/worker.py` takes paid orders one at a time: book first (`app/pipeline.py`), then the video for `all` (`app/video.py`). If the video fails, the order is `failed` but the PDF is kept.
 - Video pipeline: keyframes every 0.5 s, each drawn with the previous one for consistency; a cheap check of every keyframe, with one fix that is kept only if it still looks like manga; a held-keyframe animatic; motion in pieces of up to 6.6 s; 1 s crossfades between pieces.
@@ -59,15 +59,16 @@ Later phases, not in the code yet: Qwen-Image-Edit with a style LoRA on RunPod r
 
 - Front end: `all` checkout uses the configured clip-duration limit; long clips can still buy the book. English and Chinese processing states show the expected wait, and completed clips play above the PDF/MP4 download links.
 - Done: book pipeline, Alipay web checkout (sandbox on Railway), video pipeline and `all` product in the backend (PR #1), storyboard model fix (PR #3), free sandbox payment testing with `GENERATION_MODE=sample` (2026-11-02), `/admin` mocked/real switch and real-money payment test flag (2026-11-03).
-- Hosting: nothing is deployed yet. The backend has only run locally on the owner's Mac; GitHub Pages hosts the static preview. Railway is prepared (`docs/RAILWAY.md`) but not set up.
+- Hosting: the backend runs on the owner's Mac behind the shared public `/manga` gateway. GitHub Pages hosts the customer and admin pages. Railway is prepared (`docs/RAILWAY.md`) but not set up.
 - Front end: English and Chinese checkout pages label sample mode, payment-test processing, sample downloads, and sample video previews. Payment-test orders do not show the live-generation wait estimate.
 - Verified 2026-11-03: local `book` sandbox checkout in Safari at the configured ¥1.10 charge; server trade query returned `TRADE_SUCCESS`, sample PDF downloaded with the buyer cookie and matched the delivered file, full SDK refund returned `fund_change=Y`, and refund query returned `REFUND_SUCCESS`. Zero model calls and $0 model cost. Public HTTPS notification delivery and production remain unverified.
 - Verified 2026-11-03: shared public gateway routing at `/manga/`, including upload, sample-mode status/configuration, scoped secure buyer cookies, prefixed payment URLs, Chinese-page redirect, and the signed public payment return URL. No additional payment or paid generation was submitted; the local instance still omits `ALIPAY_NOTIFY_URL`, so public payment-notification delivery remains unverified.
 - Before selling `all`: set `ALIPAY_ALL_CENTS`; raise the Gemini spend-rate limit (the default throttles at about $10 an hour, which is 3–4 videos); review one live sample.
 - Last measured: a 6 s clip through the video pipeline took about 5 minutes and cost $1.62.
 
+- Front end 2026-11-04: static builds configure `MANGA_API_BASE` (default `https://marine-api.tunnel.tungo.cn/manga`); backend-served pages stay on their own API mount. Buyer tokens persist per API/order in localStorage, authenticate status via `X-Buyer-Token`, and authorize payment/download/playback links with `?t=`. Completed orders can be restored after reload.
+- Verified 2026-11-04 after PRs #6–#9: the Mac instance on loopback 18081 returns public admin status as 200 JSON without a token, permits the GitHub Pages buyer-token CORS preflight, and the Pages admin displays MOCKED in Safari. Sandbox/sample mode is retained with no Gemini key.
+
 ## Requests between agents
 
 Add a dated line here; the other agent removes it when done.
-
-- 2026-11-03, Claude to Codex: the owner wants the customer page on github.io to use the API at `https://marine-api.tunnel.tungo.cn/manga` (behind the shared gateway). Make the page's API base configurable (it is `base+"api/"` today). Keep `buyer_token` from `POST /api/orders` in localStorage per order, send it as `X-Buyer-Token` on status calls, and add `?t=<token>` to the pay URL (prefixed with the API base) and to download links. The server must set `CORS_ORIGINS=https://marinelj.github.io` and `PUBLIC_URL=https://marine-api.tunnel.tungo.cn/manga`. I added `app/admin.html` to `scripts/build_site.sh` and `pages.yml` so the admin page is published too.
