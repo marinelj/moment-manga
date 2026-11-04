@@ -8,7 +8,7 @@ main{max-width:980px;margin:0 auto;padding:20px 16px 48px}h1{font-size:22px;marg
 .card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-top:12px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}input{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;min-width:260px}
 button{font:inherit;font-weight:600;padding:8px 14px;border-radius:6px;border:1px solid var(--ink);background:#fff;cursor:pointer}
-button.on{background:var(--ink);color:#fff}button:disabled{opacity:.5;cursor:default}
+label.opt{display:flex;gap:10px;align-items:center;padding:6px 0;font-weight:600;cursor:pointer}label.opt input{min-width:0;width:18px;height:18px;margin:0}button:disabled{opacity:.5;cursor:default}
 .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:13px;font-weight:700;border:1px solid}
 .live{color:var(--red);border-color:var(--red)}.sample{color:var(--green);border-color:var(--green)}
 .muted{color:#5b6168;font-size:13px}.warn{color:var(--amber);font-weight:600}
@@ -21,9 +21,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <div id="panel" hidden>
 <h2>Gemini calls</h2>
 <div class="card">
-<div>Now: <span id="mode" class="pill"></span> <span id="source" class="muted"></span></div>
 <p class="muted" id="explain"></p>
-<div class="row"><button data-mode="sample">Mocked (sample files, $0)</button><button data-mode="live">Real Gemini (costs money)</button><button data-mode="">Back to server setting</button></div>
+<label class="opt"><input type="radio" name="mode" value="sample"> Mocked: sample files, $0</label><label class="opt"><input type="radio" name="mode" value="live"> Real Gemini: costs money</label>
 <div id="msg"></div>
 <p class="muted">The switch applies to new orders. Each order keeps the mode it was created with.</p>
 </div>
@@ -42,10 +41,8 @@ async function api(path,opts={}){const r=await fetch(base+path,{...opts,headers:
  if(!r.ok)throw new Error(r.status===0?"Server unreachable":r.status===404?"Admin needs PAYMENT_PROVIDER=alipay_web":"Error "+r.status);return r.json()}
 function text(tag,value){const el=document.createElement(tag);el.textContent=value;return el}
 async function refresh(){const s=await api("/api/admin/status");$("panel").hidden=false;
- $("mode").textContent=s.mode==="live"?"REAL GEMINI":"MOCKED";$("mode").className="pill "+s.mode;
- $("source").textContent="(from "+s.mode_source+")";
  $("explain").textContent=s.mode==="live"?"New paid orders call Gemini: about $1–2 per book, $3–4 more per video.":"New paid orders get sample files. No Gemini calls, $0 model cost.";
- document.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("on",b.dataset.mode===(s.mode_source==="admin page"?s.mode:"")));
+ document.querySelectorAll('input[name="mode"]').forEach(r=>r.checked=r.value===s.mode);
  const srv=$("serverinfo");srv.replaceChildren();
  [["Alipay",s.alipay_env==="production"?"PRODUCTION (real money)":"sandbox (test money)"],["Checkout open",s.checkout_ready?"yes":"no"],
   ["Gemini key on server",s.gemini_key_set?"yes":"no"],["Real-money payment test allowed",s.production_payment_test_allowed?"yes (ALLOW_PRODUCTION_PAYMENT_TEST=1)":"no"],
@@ -57,8 +54,7 @@ async function refresh(){const s=await api("/api/admin/status");$("panel").hidde
 $("load").onclick=async()=>{if(!onBackend)base=$("server").value.trim().replace(/\/$/,"");
  try{if(!onBackend)localStorage.setItem("mm_api",base)}catch(e){}
  try{await refresh();$("msg").textContent=""}catch(e){$("panel").hidden=true;$("err").textContent=e.message==="Failed to fetch"?"Cannot reach the server. Check the address, that the server is running, and that CORS_ORIGINS includes this site.":e.message}};
-document.querySelectorAll("[data-mode]").forEach(b=>b.onclick=async()=>{const mode=b.dataset.mode||null;
- if(mode==="live"&&b.dataset.armed!=="1"){b.dataset.armed="1";b.textContent="Click again: real Gemini costs money";setTimeout(()=>{b.dataset.armed="";b.textContent="Real Gemini (costs money)"},5000);return}b.dataset.armed="";
+document.querySelectorAll('input[name="mode"]').forEach(r=>r.onchange=async()=>{const mode=r.value;
  try{await api("/api/admin/generation",{method:"POST",body:JSON.stringify({mode})});await refresh();$("msg").textContent="Saved."}catch(e){$("msg").textContent=e.message}});
 $("load").click();setInterval(()=>{if(!$("panel").hidden)refresh().catch(()=>{})},10000);
 </script></main></body></html>
