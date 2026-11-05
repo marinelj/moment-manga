@@ -1,0 +1,262 @@
+{
+  "method": "Codex visual self-review against cast.json, character sheet and exact source frames; not an independent automated model evaluation.",
+  "age_rule": "High-school teenagers 15\u201317; youthful faces, lean builds, no stubble or adult muscle mass.",
+  "character_sheet_check": {
+    "result": "pass",
+    "front_numbers": [
+      1,
+      6,
+      11,
+      1
+    ],
+    "rear_numbers": [
+      1,
+      6,
+      11,
+      1
+    ],
+    "teams": [
+      "blue",
+      "white",
+      "white",
+      "white"
+    ],
+    "side_views": "All face screen-left; no mirrored numerals.",
+    "age": "Youthful and lean; final facial details are stylized interpretations."
+  },
+  "panel_count": 9,
+  "redraw_count": 1,
+  "max_redraws_per_panel": 1,
+  "checks": [
+    {
+      "panel": 1,
+      "attempt": 1,
+      "result": "pass",
+      "numbers": "Visible W6=6 (burgundy on white), B1=1 (white on blue).",
+      "colours": "Royal-blue B1, white W6, burgundy trim retained.",
+      "sides": "W6 screen-left of B1, matches frame 8.",
+      "age": "Youthful faces and lean teenage proportions.",
+      "ball": "One ball controlled by B1 at right side.",
+      "bystanders": "Only distant silhouettes; no foreground bystanders.",
+      "limitations": [
+        "Closer/cleaner staging than source; facial identities are reference-sheet approximations."
+      ]
+    },
+    {
+      "panel": 2,
+      "attempt": 1,
+      "result": "pass",
+      "numbers": "B1 back 1 and W6 front 6 legible.",
+      "colours": "Blue/white teams and number colours correct.",
+      "sides": "W6 left, B1 right; unmirrored frame 10 order.",
+      "age": "Lean youths, no stubble or exaggerated adult musculature.",
+      "ball": "One ball beneath B1's right hand in dribble.",
+      "bystanders": "No foreground referee/fan.",
+      "limitations": [
+        "Ball shown mid-bounce rather than at exact floor contact; camera is tighter than source."
+      ]
+    },
+    {
+      "panel": 3,
+      "attempt": 1,
+      "result": "pass",
+      "numbers": "White 6 front and blue 1 back correct.",
+      "colours": "Blue/white and burgundy trims retained.",
+      "sides": "W6 left, B1 right, as frame 11.",
+      "age": "Smooth youthful faces, lean builds.",
+      "ball": "One ball at B1 right-hand dribble.",
+      "bystanders": "Source foreground referee omitted.",
+      "limitations": [
+        "Background geometry simplified; not a pixel-faithful tracing."
+      ]
+    },
+    {
+      "panel": 4,
+      "attempt": 1,
+      "result": "pass",
+      "numbers": "White 6 front and blue 1 back correct.",
+      "colours": "Royal blue B1; white W6; consistent trim.",
+      "sides": "W6 left and B1 right at first step in frame 12; not mirrored.",
+      "age": "Lean adolescent body proportions and youthful faces.",
+      "ball": "One low ball controlled by B1.",
+      "bystanders": "Only distant silhouettes.",
+      "limitations": [
+        "Pose less tightly overlapping than source; camera is wider/cleaner."
+      ]
+    },
+    {
+      "panel": 5,
+      "attempt": 1,
+      "result": "fail",
+      "numbers": "B1=1, W6=6, W11=11 all correct.",
+      "colours": "Blue and white uniforms correct.",
+      "sides": "Player order W11-B1-W6 correct, but hoop context is on upper-right instead of active left-side basket.",
+      "age": "Youthful faces and lean teenage builds.",
+      "ball": "One ball controlled by B1.",
+      "bystanders": "No foreground bystanders.",
+      "failure": [
+        "Court/hoop orientation drift."
+      ],
+      "fix_requested": "Retain cast identities/order; active hoop must be upper-left; remove right-side practice hoop."
+    },
+    {
+      "panel": 5,
+      "attempt": 2,
+      "result": "pass",
+      "numbers": "W11=11, B1=1, W6=6 retained.",
+      "colours": "Royal-blue B1, white defenders, correct numeral colours.",
+      "sides": "W11 left, B1 center, W6 right; corrected active hoop to upper-left; no right hoop.",
+      "age": "Youthful faces and lean teen builds retained.",
+      "ball": "One low dribble controlled by B1.",
+      "bystanders": "No foreground bystanders.",
+      "fix_result": "Court orientation corrected in the only allowed redraw.",
+      "limitations": [
+        "Players more separated than original; no exact facial-resemblance claim."
+      ]
+    },
+    {
+      "panel": 6,
+      "attempt": 1,
+      "result": "pass",
+      "numbers": "W11=11, B1=1, W6=6 correct and visible.",
+      "colours": "Blue B1 and white defenders, burgundy numbers/trim correct.",
+      "sides": "W11 left, B1 center, W6 right; hoop upper-left.",
+      "age": "Teenage proportions, no adult muscle bulk.",
+      "ball": "One low ball with B1.",
+      "bystanders": "Distant silhouettes only.",
+      "limitations": [
+        "Camera tighter and positions spread relative to original crowded frame."
+      ]
+    },
+    {
+      "panel": 7,
+      "attempt": 1,
+      "result": "pass",
+      "numbers": "W11 back 11, B1 back 1, W6 back 6; deeper W1 front 1 correct.",
+      "colours": "Only B1 is royal blue; three defenders white with burgundy numerals.",
+      "sides": "W11 left, B1 center, W6 right; W1 deeper near rim, hoop upper-left.",
+      "age": "Lean adolescents with smooth youthful faces.",
+      "ball": "One ball being gathered by B1.",
+      "bystanders": "Four cast members only, no foreground crowd/referee.",
+      "limitations": [
+        "Foreground grouping is cleaned up and W1's occluded role is inferred; source tracking confidence noted in cast.json."
+      ]
+    },
+    {
+      "panel": 8,
+      "attempt": 1,
+      "result": "pass",
+      "numbers": "W11 back 11, B1 back 1, deeper W1 front 1, W6 back 6 correct.",
+      "colours": "B1 blue/white numeral; W1/W6/W11 white with burgundy numerals.",
+      "sides": "W11 left, B1 center-left, W1 behind/right, W6 right; hoop upper-left.",
+      "age": "Youthful faces and lean builds, no stubble/adult muscle mass.",
+      "ball": "One ball raised by B1 for the visible attempt; no invented dunk or score.",
+      "bystanders": "No foreground bystanders.",
+      "limitations": [
+        "More frontal view of W1 and tighter composition than partially occluded original."
+      ]
+    },
+    {
+      "panel": 9,
+      "attempt": 1,
+      "result": "pass",
+      "numbers": "Left to right W11=11, B1=1, W1=1, W6=6 correct.",
+      "colours": "Only B1 blue; light team white/burgundy; two different number-1 players remain distinct.",
+      "sides": "W11, B1, W1, W6 in expected screen-left/right order; active hoop upper-left.",
+      "age": "Lean teen proportions and smooth youthful profiles.",
+      "ball": "One airborne released ball; no made-basket outcome asserted.",
+      "bystanders": "No foreground bystanders.",
+      "limitations": [
+        "Players re-spaced into clearer silhouettes; fine face identity cannot be verified against compressed source."
+      ]
+    }
+  ],
+  "comparison_round_1": "Visible jersey numbers and uniform colours remain consistent; youthful lean builds replace adult musculature; no foreground referee/fan portraits. Court orientation failed once and was corrected. Camera and spacing still drift from the source; earlier W6 identity and pre-release W1 tracking have medium confidence, recorded in cast.json.",
+  "caveats": [
+    "The storyboard focuses on frames 8\u201318 of the same clip rather than round 1's wider frame 0\u201322 selection; this is not a fully matched scene-by-scene experiment.",
+    "Faces are not identifiable at source resolution; consistency here means adherence to the designed sheet, not exact likeness.",
+    "Only one source frame plus sheet supplied per panel; no Gemini calls or paid generation pipeline invoked."
+  ],
+  "page_crop_check": {
+    "pdf_pages": 3,
+    "result": "pass with crop limitations",
+    "observations": [
+      "Correct jersey numbers and colours retained where visible; rightmost W6 numeral is partly clipped in the final panel by repo cover cropping.",
+      "Source left/right ordering stays readable after layout.",
+      "W11 and W6 near panel edges lose some outer limbs; original repo cover-crop behavior retained.",
+      "Caption box overlaps upper-left basket area in page 3 top panel; jerseys remain readable.",
+      "No foreground fan/referee portraits in final pages.",
+      "Final panel W6 back 6 is partially clipped at the right edge; raw panel_09.png has the complete correct numeral. No second redraw or change to layout code used."
+    ]
+  },
+  "timings_before_share": {
+    "started_epoch": 1793901344.703103,
+    "cast_started_epoch": 1793901410.19727,
+    "age_clarification_received_epoch": 1793901410.19727,
+    "cast_and_storyboard_seconds": 100.96474504470825,
+    "character_sheet_started_epoch": 1793901511.162015,
+    "character_sheet_call_seconds": 42.657,
+    "character_sheet_wall_seconds": 144.56763792037964,
+    "panels_started_epoch": 1793901655.729653,
+    "panel_review_started_epoch": 1793901944.627581,
+    "panels_and_review_wall_seconds": 1539.9607779979706,
+    "panel_generation_calls": 10,
+    "redraws": 1,
+    "panel_call_seconds": [
+      {
+        "panel": 1,
+        "attempt": 1,
+        "seconds": 47.26
+      },
+      {
+        "panel": 2,
+        "attempt": 1,
+        "seconds": 98.097
+      },
+      {
+        "panel": 3,
+        "attempt": 1,
+        "seconds": 53.754
+      },
+      {
+        "panel": 4,
+        "attempt": 1,
+        "seconds": 97.258
+      },
+      {
+        "panel": 5,
+        "attempt": 1,
+        "seconds": 54.184
+      },
+      {
+        "panel": 6,
+        "attempt": 1,
+        "seconds": 113.473
+      },
+      {
+        "panel": 5,
+        "attempt": 2,
+        "seconds": 114.315
+      },
+      {
+        "panel": 7,
+        "attempt": 1,
+        "seconds": 162.036
+      },
+      {
+        "panel": 8,
+        "attempt": 1,
+        "seconds": 116.755
+      },
+      {
+        "panel": 9,
+        "attempt": 1,
+        "seconds": 230.171
+      }
+    ],
+    "assembly_seconds": 0.28104037494631484,
+    "assembly_finished_epoch": 1793903195.979614,
+    "pdf_verification_seconds": 172.26984810829163,
+    "verified_epoch": 1793903368.249463
+  }
+}

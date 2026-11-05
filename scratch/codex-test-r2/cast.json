@@ -1,0 +1,105 @@
+{
+  "age_rule": "All players are teenagers, high-school age 15–17, youthful faces, lean adolescent builds, no stubble and no adult muscle mass.",
+  "source": "web/demo/original.mp4; exact round-1 768px extracted frames, zero-based indices",
+  "orientation_rule": "Screen-left/right always refers to the unmirrored source frame and changes as the play develops. Character sheet column order is not a scene position.",
+  "fidelity_limit": "Jersey digits and light/dark teams are observable; fine facial identities are not resolvable in this compressed clip. Hair/build descriptions are coarse visual observations, not exact portrait reconstructions.",
+  "players": [
+    {
+      "id": "B1",
+      "role": [
+        "ball handler",
+        "close-range shooter"
+      ],
+      "jersey_number": 1,
+      "team": "dark",
+      "uniform": "royal blue jersey and shorts, white number 1, burgundy-red/white side trim",
+      "hair": "short straight black hair, close at sides",
+      "build": "lean, relatively small teenage guard; youthful face",
+      "evidence_frames": [
+        10,
+        11,
+        14,
+        16,
+        17,
+        18
+      ],
+      "number_confidence": "high: back numeral 1 visible in multiple frames",
+      "tracking_confidence": "high through midcourt-to-rim sequence",
+      "positions": {
+        "8-12": "right of W6",
+        "13-16": "left of W6; right of W11 when W11 joins",
+        "18": "right of W11, left of W1 and W6"
+      }
+    },
+    {
+      "id": "W6",
+      "role": [
+        "primary on-ball defender",
+        "trailing defender"
+      ],
+      "jersey_number": 6,
+      "team": "light",
+      "uniform": "white jersey and shorts, burgundy-red number 6 and burgundy/black side trim",
+      "hair": "short straight black hair with slightly fuller top",
+      "build": "lean teenage guard, similar height or slightly taller than B1; youthful face",
+      "evidence_frames": [
+        15,
+        16,
+        17,
+        18
+      ],
+      "number_confidence": "high in the lane: back numeral 6 visible",
+      "tracking_confidence": "medium for earlier frontal marker; inferred by continuous movement into clearly numbered trailing defender",
+      "positions": {
+        "8-12": "left of B1",
+        "13-18": "right of B1"
+      }
+    },
+    {
+      "id": "W11",
+      "role": [
+        "help defender at left side of lane"
+      ],
+      "jersey_number": 11,
+      "team": "light",
+      "uniform": "white jersey and shorts, burgundy-red number 11 and burgundy/black side trim",
+      "hair": "short straight black hair, simple close trim",
+      "build": "lean taller teenager, youthful face; no adult bulk",
+      "evidence_frames": [
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      "number_confidence": "high: back numeral 11 visible",
+      "tracking_confidence": "high near lane",
+      "positions": {
+        "13-18": "screen-left of B1, near left basket"
+      }
+    },
+    {
+      "id": "W1",
+      "role": [
+        "rim defender"
+      ],
+      "jersey_number": 1,
+      "team": "light",
+      "uniform": "white jersey and shorts, burgundy-red number 1 and burgundy/black side trim",
+      "hair": "short straight black hair",
+      "build": "lean taller teenager, youthful face; longer limbs than B1",
+      "evidence_frames": [
+        17,
+        18
+      ],
+      "number_confidence": "high in frame 18: back numeral 1 visible next to blue 1",
+      "tracking_confidence": "medium before frame 18: central rim defender is partially occluded",
+      "positions": {
+        "15-16": "behind or beyond B1 near basket, right of W11",
+        "18": "immediately screen-right of B1, screen-left of W6"
+      }
+    }
+  ],
+  "exclusions": "Blue 5 is a separate teammate, not a number change of B1; he is not foregrounded in this retelling. Referees/fans may only be tiny distant silhouettes, never foreground portraits."
+}
