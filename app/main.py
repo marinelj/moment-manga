@@ -282,8 +282,10 @@ def alipay_pay(oid: str, request: Request):
         form = provider.page_form(order)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+    # form-action also covers redirects: Alipay's gateway 302s the POST to its cashier
+    # (e.g. excashier.alipay.com), so allow the whole Alipay domain, not just the gateway host.
     return HTMLResponse(form, headers={"Cache-Control": "no-store",
-                                       "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; form-action https://openapi.alipay.com https://openapi-sandbox.dl.alipaydev.com"})
+                                       "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; form-action https://*.alipay.com https://*.alipaydev.com"})
 
 
 @app.get("/api/pay/return", response_class=HTMLResponse)
