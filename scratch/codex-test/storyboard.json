@@ -1,0 +1,80 @@
+{
+  "title": "One End to the Other",
+  "pages": [
+    {
+      "panels": [
+        {
+          "frame": 0,
+          "shot": "wide",
+          "description": "An indoor youth basketball game. Players in white uniforms and dark blue uniforms gather in the painted key beneath the basket at upper right; keep their visible positions and the sideline spectators as in the frame.",
+          "caption": "In the paint",
+          "sfx": ""
+        },
+        {
+          "frame": 4,
+          "shot": "medium",
+          "description": "Players in blue and white turn and run toward screen left away from the basket at upper right. A blue runner at left and white defenders are moving out of the lane; the ball is low near the runners. Preserve the screen direction.",
+          "caption": "The break begins",
+          "sfx": "THUD"
+        },
+        {
+          "frame": 8,
+          "shot": "medium",
+          "description": "At midcourt a short-haired blue-uniform ball handler runs on screen right, with a white-uniform defender immediately to his left. Keep the ball close to the blue player and preserve the defender to his left.",
+          "caption": "Across midcourt",
+          "sfx": "TAP"
+        }
+      ]
+    },
+    {
+      "panels": [
+        {
+          "frame": 11,
+          "shot": "wide",
+          "description": "Blue number 1 is seen from behind near center-right, dribbling low on his right. A white defender faces him from screen left in a low stance. Other players wait upcourt toward the left basket. Preserve the player positions; simplify the foreground referee.",
+          "caption": "Face to face",
+          "sfx": "TAP"
+        },
+        {
+          "frame": 13,
+          "shot": "medium",
+          "description": "The blue ball handler leans and drives toward screen left with a white defender alongside on his screen-right shoulder. A referee partly obscures the lower foreground. Retain the movement and overlap without adding a new play.",
+          "caption": "Find the gap",
+          "sfx": ""
+        },
+        {
+          "frame": 15,
+          "shot": "medium",
+          "description": "The blue ball handler penetrates the left-side painted lane between white number 11 on his left and white number 6 on his right. Keep the hoop at upper left and these defender positions.",
+          "caption": "Into the lane",
+          "sfx": "DASH"
+        }
+      ]
+    },
+    {
+      "panels": [
+        {
+          "frame": 16,
+          "shot": "wide",
+          "description": "Under the upper-left basket the blue attacker raises an arm toward the hoop between white number 11 at screen left and white number 6 at screen right. Draw only the visible contested upward action, without inventing a made basket.",
+          "caption": "A crowded finish",
+          "sfx": ""
+        },
+        {
+          "frame": 18,
+          "shot": "medium",
+          "description": "Players in white and blue gather beneath the left basket and look upward after the close-range action. White number 11 is left of the group and white number 6 nearer the center. Preserve the visible spacing; do not invent the ball going through the net.",
+          "caption": "Eyes on the rim",
+          "sfx": ""
+        },
+        {
+          "frame": 22,
+          "shot": "medium",
+          "description": "Players spread out after the action: blue number 5 near center turns back upcourt; white players and other blue players remain around the left paint and right side, with a referee crossing the lower foreground. Keep the hoop on the left.",
+          "caption": "The game moves on",
+          "sfx": ""
+        }
+      ]
+    }
+  ]
+}
