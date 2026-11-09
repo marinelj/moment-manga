@@ -136,14 +136,17 @@ class Cache:
 
 
 def _retry(fn, sleep, tries=4):
-    """Gemini returns 429 when the account's spend rate is hit and 5xx on proxy timeouts."""
+    """Gemini returns 429 when the account's spend rate is hit and 5xx on proxy timeouts; a proxy may also drop the
+    connection without an answer."""
     for attempt in range(tries):
         try:
             return fn()
         except Exception as exc:  # the SDK raises several error classes; match on the message
             text = str(exc)
             transient = any(code in text for code in ("429", "RESOURCE_EXHAUSTED", "500", "502", "503", "504",
-                                                      "UNAVAILABLE", "DEADLINE"))
+                                                      "UNAVAILABLE", "DEADLINE", "disconnected",
+                                                      "RemoteProtocolError", "ReadTimeout", "ReadError",
+                                                      "ConnectError", "Connection reset"))
             if not transient or attempt == tries - 1:
                 raise
             sleep(min(300, 30 * 2 ** attempt))
