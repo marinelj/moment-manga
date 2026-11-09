@@ -28,7 +28,9 @@ for column, kind in (
     ("product", "TEXT"), ("amount_yuan", "TEXT"), ("app_id", "TEXT"),
     ("seller_id", "TEXT"), ("buyer_token_hash", "TEXT"),
     ("alipay_trade_no", "TEXT"), ("paid_at", "REAL"), ("photo", "TEXT"),
-    ("last_query_at", "REAL"), ("video_result", "TEXT"), ("generation", "TEXT"),
+    ("last_query_at", "REAL"), ("video_result", "TEXT"), ("generation", "TEXT"), ("api_style", "TEXT"),
+    ("email", "TEXT"), ("notify_token", "TEXT"), ("done_at", "REAL"), ("notified_at", "REAL"),
+    ("files_deleted_at", "REAL"),
 ):
     try:
         _conn.execute(f"ALTER TABLE orders ADD COLUMN {column} {kind}")
@@ -71,7 +73,7 @@ def set_setting(key: str, value: str | None) -> None:
 
 def recent_orders(limit: int = 20) -> list[dict]:
     with _lock:
-        rows = _conn.execute("""SELECT o.id, o.created, o.product, o.status, o.progress, o.generation, o.amount_yuan,
+        rows = _conn.execute("""SELECT o.id, o.created, o.product, o.status, o.progress, o.generation, o.api_style, o.amount_yuan,
                 o.error, COALESCE((SELECT SUM(usd) FROM order_costs c WHERE c.order_id=o.id), 0) AS cost_usd
             FROM orders o ORDER BY o.created DESC LIMIT ?""", (limit,)).fetchall()
     return [dict(row) for row in rows]
@@ -230,6 +232,30 @@ def clear_expired_alipay_uploads(oid: str) -> None:
             status=CASE WHEN status='unpaid' THEN 'failed' ELSE status END
             WHERE id=? AND provider='alipay_web'""", (oid,))
         _conn.commit()
+
+
+def expired_results(cutoff: float) -> list[str]:
+    """Done orders whose download period ended before cutoff and whose files are still on disk.
+    Orders finished before done_at existed have none and are left alone."""
+    with _lock:
+        rows = _conn.execute("""SELECT id FROM orders WHERE status='done' AND done_at IS NOT NULL
+            AND done_at<? AND files_deleted_at IS NULL""", (cutoff,)).fetchall()
+    return [row["id"] for row in rows]
+
+
+def unsent_ready_notices(since: float) -> list[str]:
+    with _lock:
+        rows = _conn.execute("""SELECT id FROM orders WHERE status='done' AND email IS NOT NULL
+            AND notify_token IS NOT NULL AND notified_at IS NULL AND done_at>?""", (since,)).fetchall()
+    return [row["id"] for row in rows]
+
+
+def claim_notice(oid: str) -> bool:
+    """Only one sender gets an order's ready email, even if the worker and the hourly retry race."""
+    with _lock:
+        cur = _conn.execute("UPDATE orders SET notified_at=? WHERE id=? AND notified_at IS NULL", (time.time(), oid))
+        _conn.commit()
+    return cur.rowcount == 1
 
 
 def claim_next() -> dict | None:

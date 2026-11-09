@@ -4,6 +4,7 @@ import shutil
 import hashlib
 import json
 import math
+import re
 import secrets
 import subprocess
 from pathlib import Path
@@ -15,11 +16,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
-from . import db, modes, payments, settings, worker
+from . import db, modes, notify, payments, settings, worker
 
 THEMES = {"sports", "travel", "portrait", "comedy"}
 STYLES = {"miyazaki", "naruto", "slamdunk", "demonslayer", "onepiece"}
 WEB = Path(__file__).resolve().parent.parent / "web"
+EMAIL = re.compile(r"[^@\s<>,;\"']+@[^@\s<>,;\"']+\.[^@\s<>,;\"'.]{2,}")   # a sanity check, not full RFC 5322
 
 app = FastAPI(title="Moment Manga")
 if settings.CORS_ORIGINS:
@@ -93,6 +95,11 @@ def config():
             "video_max_seconds": settings.VIDEO_MAX_SECONDS,
             "checkout_ready": ready,
             "generation": modes.current(),
+            # batch: real orders can take up to batch_max_wait_hours, so tell the buyer before they pay
+            "api_style": modes.api_style(),
+            "batch_max_wait_hours": settings.BATCH_MAX_WAIT_HOURS,
+            "download_days": settings.DOWNLOAD_DAYS,      # finished files are deleted after this many days
+            "ready_email": notify.enabled(),               # show the optional email field only when true
             "products": list(provider.prices) if ready else [],
             "charges": {product: {"amount": amount, "currency": "CNY"}
                         for product, amount in provider.prices.items()}
@@ -102,8 +109,11 @@ def config():
 @app.post("/api/orders")
 async def create_order(video: UploadFile = File(...), theme: str | None = Form(None),
                        style: str | None = Form(None), photo: UploadFile | None = File(None),
-                       product: str | None = Form(None), lang: str = Form("en")):
+                       product: str | None = Form(None), lang: str = Form("en"), email: str | None = Form(None)):
     webpay = settings.PAYMENT_PROVIDER == "alipay_web"
+    email = (email or "").strip() or None
+    if email and (len(email) > 254 or not EMAIL.fullmatch(email)):
+        raise HTTPException(400, "Invalid email address")
     if webpay:
         if not checkout_ready():
             raise HTTPException(503, "Checkout is unavailable")
@@ -158,7 +168,8 @@ async def create_order(video: UploadFile = File(...), theme: str | None = Form(N
             except (UnidentifiedImageError, OSError, ValueError) as exc:
                 raise HTTPException(400, "Invalid photo") from exc
         order = db.create(theme, style, "", lang)
-        db.update(order["id"], generation=modes.current())   # fixed for the order's lifetime
+        # Fixed for the order's lifetime, whatever the admin page says later.
+        db.update(order["id"], generation=modes.current(), api_style=modes.api_style())
         path = uploads / f"{order['id']}{Path(video.filename or '').suffix.lower() or '.mp4'}"
         shutil.move(tmp, path)
         photo_path = None
@@ -175,6 +186,9 @@ async def create_order(video: UploadFile = File(...), theme: str | None = Form(N
                   provider="alipay_web", product=product, amount_yuan=provider.prices[product],
                   app_id=provider.app_id, seller_id=provider.seller_id,
                   buyer_token_hash=hashlib.sha256(token.encode()).hexdigest())
+        if email and notify.enabled():
+            # Kept only until the ready email is sent (token) or the files are deleted (address).
+            db.update(order["id"], email=email, notify_token=token)
         result = JSONResponse({"id": order["id"], "status": "unpaid", "payment": provider.payment(db.get(order["id"])),
                                "buyer_token": token})
         result.set_cookie(f"mm_buyer_{order['id']}", token, httponly=True, samesite="lax",
@@ -218,7 +232,13 @@ def order_status(oid: str, request: Request):
     out = {"id": oid, "status": o["status"], "progress": o["progress"]}
     if o.get("generation") == "sample":
         out["payment_test"] = True    # sample files only: the page should say this is a payment test
-    if o["status"] == "done":
+    elif o.get("api_style") == "batch":
+        out["api_style"] = "batch"    # real Gemini Batch order: ready within batch_max_wait_hours, often sooner
+    if o["status"] == "done" and o.get("files_deleted_at"):
+        out["files_expired"] = True   # past the download period: the files are gone
+    elif o["status"] == "done":
+        if o.get("done_at"):
+            out["files_expire_at"] = int(notify.expires_at(o))   # Unix seconds; show it as a date
         out["downloads"] = {"book": f"/api/orders/{oid}/manga.pdf"}
         if o.get("video_result"):
             out["downloads"]["clip"] = f"/api/orders/{oid}/manga.mp4"
@@ -235,6 +255,7 @@ def download(oid: str, request: Request):
         raise HTTPException(404)
     if o.get("provider") == "alipay_web":
         _require_buyer(request, o)
+    _still_kept(o)
     return FileResponse(o["result"], media_type="application/pdf", filename="moment-manga.pdf")
 
 
@@ -245,7 +266,13 @@ def download_video(oid: str, request: Request):
         raise HTTPException(404)
     if o.get("provider") == "alipay_web":
         _require_buyer(request, o)
+    _still_kept(o)
     return FileResponse(o["video_result"], media_type="video/mp4", filename="moment-manga.mp4")
+
+
+def _still_kept(o: dict) -> None:
+    if o.get("files_deleted_at"):
+        raise HTTPException(410, f"Files are deleted {settings.DOWNLOAD_DAYS} days after the order is ready")
 
 
 @app.post("/api/pay/notify")
@@ -340,6 +367,10 @@ class GenerationChoice(BaseModel):
     mode: str | None     # "live", "sample", or null to go back to the GENERATION_MODE setting
 
 
+class ApiStyleChoice(BaseModel):
+    style: str | None    # "standard", "batch", or null to go back to the GEMINI_API_STYLE setting
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page():
     """Debug page: no token. Anyone with the address can switch mocked/real Gemini."""
@@ -351,8 +382,12 @@ def admin_page():
 def admin_status(request: Request):
     _require_debug()
     override = db.get_setting(modes.KEY)
+    style_override = db.get_setting(modes.STYLE_KEY)
     return {"mode": modes.current(), "mode_source": "admin page" if override else "GENERATION_MODE setting",
             "env_mode": settings.GENERATION_MODE, "alipay_env": settings.ALIPAY_ENV,
+            "api_style": modes.api_style(),
+            "api_style_source": "admin page" if style_override else "GEMINI_API_STYLE setting",
+            "batch_max_wait_hours": settings.BATCH_MAX_WAIT_HOURS,
             "checkout_ready": checkout_ready(), "gemini_key_set": bool(settings.GEMINI_API_KEY),
             "production_payment_test_allowed": settings.ALLOW_PRODUCTION_PAYMENT_TEST,
             "prices": dict(getattr(provider, "prices", {})),
@@ -367,6 +402,16 @@ def admin_set_generation(body: GenerationChoice, request: Request):
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"mode": modes.current(), "checkout_ready": checkout_ready()}
+
+
+@app.post("/api/admin/api-style")
+def admin_set_api_style(body: ApiStyleChoice, request: Request):
+    _require_debug()
+    try:
+        modes.set_api_style(body.style)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"api_style": modes.api_style()}
 
 
 @app.get("/api/admin/orders/{oid}/costs")
