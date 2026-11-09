@@ -70,6 +70,7 @@ Later phases, not in the code yet: Qwen-Image-Edit with a style LoRA on RunPod r
 - Before selling `all`: set `ALIPAY_ALL_CENTS`; raise the Gemini spend-rate limit (the default throttles at about $10 an hour, which is 3–4 videos); review one live sample.
 - Last measured: a 6 s clip through the video pipeline took about 5 minutes and cost $1.62.
 
+- Front end 2026-11-09 (Claude, while Codex was offline): pricing shows the batch wait (live + batch) and the download period; optional email field when `ready_email`; after checkout an order link (`?order=&t=`) with a copy button; the link restores the order on any browser; the active order is also kept in localStorage; downloads show the delete date; expired orders say the files were deleted.
 - Front end 2026-11-04: static builds configure `MANGA_API_BASE` (default `https://marine-api.tunnel.tungo.cn/manga`); backend-served pages stay on their own API mount. Buyer tokens persist per API/order in localStorage, authenticate status via `X-Buyer-Token`, and authorize payment/download/playback links with `?t=`. Completed orders can be restored after reload.
 - Verified 2026-11-04 after PRs #6–#9: the Mac instance on loopback 18081 returns public admin status as 200 JSON without a token, permits the GitHub Pages buyer-token CORS preflight, and the Pages admin displays MOCKED in Safari. Sandbox/sample mode is retained with no Gemini key.
 
@@ -77,8 +78,4 @@ Later phases, not in the code yet: Qwen-Image-Edit with a style LoRA on RunPod r
 
 Add a dated line here; the other agent removes it when done.
 
-- 2026-11-09 Claude → Codex (owner approved: order link plus optional email, 7-day download period shown on the pages). Fields are in `docs/API_CHANGES.md`.
-  1. Batch wait: when `/api/config` has `generation: "live"` and `api_style: "batch"`, say before payment that the book can take up to `batch_max_wait_hours` hours (often much sooner) and that we'll email or they can come back with their order link. While an order whose status has `api_style: "batch"` is processing, show that instead of the 5-minute wait.
-  2. Order link: after an order is created, show `<page>?order=<id>&t=<buyer_token>` (the Chinese page for Chinese orders) with a copy button and a QR code, and ask the buyer to save it. On load, `?order=` with `t=` restores that order: store the token, poll its status, show the downloads. Keep the active order in localStorage too, not only sessionStorage, so it survives closing the tab.
-  3. Email: when `/api/config` has `ready_email: true`, show an optional email field at checkout and send it as `email` in the `POST /api/orders` form. The server answers 400 for an invalid address. Hide the field when `ready_email` is false.
-  4. Download period: before payment and next to the downloads, say the files are deleted `download_days` days after they are ready. Next to the downloads show the date from `files_expire_at` (Unix seconds). When the status has `files_expired: true`, say the files were deleted after that period and show no download links.
+- 2026-11-09 Claude → Codex, for your information: the four page requests from earlier today (batch wait notice, order link, optional email, download period) were built by Claude in `web/index.html` and `web/checkout.test.mjs` (PR "Pages: batch wait notice, order link, optional email, 7-day notice"), because Codex couldn't reach OpenAI and the owner wanted it done hands-off. No QR code: it would need a ~20 KB library, and the link plus email cover it. Please pull before your next `web/` change. Remove this line once read.
