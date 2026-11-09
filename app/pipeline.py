@@ -33,6 +33,7 @@ import time
 import traceback
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -169,12 +170,33 @@ def extract_frames(video: Path, out: Path, fps: float, max_frames: int) -> tuple
     return sorted(out.glob("f_*.jpg")), fps
 
 
+def _generate(client, model: str, contents: list, config):
+    """One Gemini call, streamed when the client can. A long call that sends nothing while the model thinks gets
+    cut by proxies on the way ("Server disconnected without sending a response"); streaming keeps bytes flowing.
+    The chunks are merged back into one response with .text, .usage_metadata and .candidates."""
+    stream = getattr(client.models, "generate_content_stream", None)
+    if stream is None:
+        return client.models.generate_content(model=model, contents=contents, config=config)
+    from google.genai import types
+    if "image" not in model and hasattr(config, "model_copy"):   # thought summaries flow while the model thinks
+        config = config.model_copy(update={"thinking_config": types.ThinkingConfig(include_thoughts=True)})
+    parts, texts, usage = [], [], None
+    for chunk in stream(model=model, contents=contents, config=config):
+        usage = getattr(chunk, "usage_metadata", None) or usage
+        for cand in getattr(chunk, "candidates", None) or []:
+            for part in (getattr(getattr(cand, "content", None), "parts", None) or []):
+                parts.append(part)
+                if getattr(part, "text", None) and not getattr(part, "thought", False):
+                    texts.append(part.text)
+    return SimpleNamespace(text="".join(texts), usage_metadata=usage,
+                           candidates=[SimpleNamespace(content=SimpleNamespace(parts=parts))])
+
+
 def _text_call(client, oid: str | None, step: str, contents: list, model: str, price_in: float, price_out: float,
                sleep=time.sleep) -> dict:
     from google.genai import types
-    r = clips._retry(lambda: client.models.generate_content(
-        model=model, contents=contents, config=types.GenerateContentConfig(response_mime_type="application/json")),
-        sleep)
+    r = clips._retry(lambda: _generate(
+        client, model, contents, types.GenerateContentConfig(response_mime_type="application/json")), sleep)
     u = getattr(r, "usage_metadata", None)
     if oid and u:
         tin = u.prompt_token_count or 0
@@ -442,8 +464,7 @@ def _image_from(r) -> Image.Image:
 def _image_call(client, contents: list, aspect: str, sleep=time.sleep) -> Image.Image:
     last = None
     for _ in range(2):                         # the model sometimes answers with text only
-        r = clips._retry(lambda: client.models.generate_content(
-            model=settings.GEMINI_IMAGE_MODEL, contents=contents, config=_image_config(aspect)), sleep)
+        r = clips._retry(lambda: _generate(client, settings.GEMINI_IMAGE_MODEL, contents, _image_config(aspect)), sleep)
         try:
             return _image_from(r)
         except RuntimeError as exc:

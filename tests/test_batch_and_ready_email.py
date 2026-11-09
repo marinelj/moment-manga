@@ -414,3 +414,45 @@ def test_files_are_deleted_after_the_download_period(api, mail, store):
     status = api.get(f"/api/orders/{oid}", headers={"x-buyer-token": token}).json()
     assert status["files_expired"] is True and "downloads" not in status
     assert api.get(f"/api/orders/{oid}/manga.pdf?t={token}").status_code == 410
+
+
+def test_text_and_image_calls_stream_and_merge_chunks():
+    """Long silent calls get cut by proxies, so calls are streamed and the chunks merged back into one answer."""
+    from types import SimpleNamespace as NS
+    from PIL import Image
+    from io import BytesIO
+    from app import pipeline
+
+    buf = BytesIO(); Image.new("RGB", (8, 6), "red").save(buf, "PNG")
+    seen = {}
+
+    def part(**kw):
+        return NS(text=kw.get("text"), thought=kw.get("thought", False), inline_data=kw.get("inline"))
+
+    def stream(model, contents, config):
+        seen[model] = config
+        if "image" in model:
+            yield NS(usage_metadata=None, candidates=[NS(content=NS(parts=[part(inline=NS(data=buf.getvalue()))]))])
+            return
+        yield NS(usage_metadata=None, candidates=[NS(content=NS(parts=[part(text="thinking...", thought=True)]))])
+        yield NS(usage_metadata=None, candidates=[NS(content=NS(parts=[part(text='{"a": ')]))])
+        yield NS(usage_metadata=NS(prompt_token_count=10, candidates_token_count=5, thoughts_token_count=3),
+                 candidates=[NS(content=NS(parts=[part(text="1}")]))])
+
+    client = NS(models=NS(generate_content_stream=stream))
+    assert pipeline._text_call(client, None, "x", ["hi"], "gemini-3.8-flash", 1e-6, 1e-6) == {"a": 1}
+    assert seen["gemini-3.8-flash"].thinking_config.include_thoughts is True
+    assert pipeline._image_call(client, ["hi"], "4:3").size == (8, 6)
+
+
+def test_dropped_connection_is_retried():
+    from app import video
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("Server disconnected without sending a response.")
+        return "ok"
+
+    assert video._retry(flaky, sleep=lambda s: None) == "ok" and len(calls) == 2
