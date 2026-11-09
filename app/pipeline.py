@@ -44,9 +44,13 @@ THEME_TONE = {
     "comedy": "a light comedy with a punchline in the last panel",
 }
 PAGE_W, PAGE_H, MARGIN, GUTTER = 1654, 2339, 70, 28
-# List price per panel for GEMINI_IMAGE_MODEL (gemini-3-pro-image, 1K/2K), Oct 2026, USD.
-# Batch is half price. Keep in step with the Gemini pricing page.
-PANEL_PRICE = {"standard": 0.134, "batch": 0.067}
+# Cost per panel for GEMINI_IMAGE_MODEL (gemini-3-pro-image, 1K), USD, measured 2026-11-09: 1,120 image tokens
+# at $120/M ($0.134) plus about 650 input tokens at $2/M and 380 thinking/text tokens at $12/M. The Batch API
+# is documented at half price. Keep in step with the Gemini pricing page.
+PANEL_PRICE = {"standard": 0.140, "batch": 0.070}
+# GEMINI_TEXT_MODEL (gemini-3.8-flash) per token: $0.75/M in, $3.75/M out incl. thinking, until 2026-12-31.
+# Google doubles both on 2027-01-01. A 24-frame storyboard is about 26.5k tokens in, 1.7k out: about $0.03.
+STORYBOARD_PRICE_IN, STORYBOARD_PRICE_OUT = 0.75 / 1e6, 3.75 / 1e6
 BATCH_DONE = {"JOB_STATE_SUCCEEDED", "JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"}
 PHOTO_NOTE = "Keep the lead character's appearance consistent with this portrait reference."
 
@@ -68,7 +72,7 @@ def extract_frames(video: Path, out: Path, max_frames: int = 36) -> list[Path]:
     return sorted(out.glob("f_*.jpg"))
 
 
-def storyboard(client, frames: list[Path], theme: str, lang: str) -> dict:
+def storyboard(client, frames: list[Path], theme: str, lang: str, oid: str | None = None) -> dict:
     from google.genai import types
     prompt = f"""You are a manga editor. These {len(frames)} frames come from one short video, in order (frame 0 first).
 Plan a 3 to 5 page manga telling {THEME_TONE[theme]}, using only what actually happens in the frames.
@@ -78,6 +82,12 @@ Return JSON: {{"title": str, "pages": [{{"panels": [{{"frame": int, "shot": "wid
     parts = [prompt] + [Image.open(f) for f in frames]
     r = client.models.generate_content(model=settings.GEMINI_TEXT_MODEL, contents=parts,
                                        config=types.GenerateContentConfig(response_mime_type="application/json"))
+    u = getattr(r, "usage_metadata", None)
+    if oid and u:
+        tin = u.prompt_token_count or 0
+        tout = (u.candidates_token_count or 0) + (getattr(u, "thoughts_token_count", 0) or 0)
+        db.add_cost(oid, "storyboard", settings.GEMINI_TEXT_MODEL, tin + tout,
+                    tin * STORYBOARD_PRICE_IN + tout * STORYBOARD_PRICE_OUT)
     return json.loads(r.text)
 
 
@@ -151,7 +161,7 @@ def run(order: dict, progress=lambda p: None, client=None, sleep=time.sleep, now
     if plan_file.exists():      # a restarted order keeps its storyboard, so saved panels and batch results still fit
         plan = json.loads(plan_file.read_text(encoding="utf-8"))
     else:
-        plan = storyboard(client, frames, order["theme"], lang)
+        plan = storyboard(client, frames, order["theme"], lang, order["id"])
         plan_file.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
     progress(15)
     jobs = panel_jobs(plan, frames)

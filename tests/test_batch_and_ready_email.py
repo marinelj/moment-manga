@@ -122,7 +122,8 @@ class FakeGemini:
             part = SimpleNamespace(inline_data=SimpleNamespace(data=_png(200)))
             return SimpleNamespace(candidates=[SimpleNamespace(content=SimpleNamespace(parts=[part]))])
         self.storyboards += 1
-        return SimpleNamespace(text=json.dumps(self.PLAN))
+        usage = SimpleNamespace(prompt_token_count=26_000, candidates_token_count=1_000, thoughts_token_count=1_000)
+        return SimpleNamespace(text=json.dumps(self.PLAN), usage_metadata=usage)
 
     def _upload(self, file, config):
         assert config.mime_type == "jsonl"
@@ -167,7 +168,8 @@ def book_order(clip, style):
 
 
 def costs():
-    return sorted((line["step"], line["usd"]) for line in db.order_costs("order1"))
+    """Panel lines only; the storyboard line is checked once below."""
+    return sorted((line["step"], line["usd"]) for line in db.order_costs("order1") if line["step"] != "storyboard")
 
 
 @needs_ffmpeg
@@ -180,7 +182,9 @@ def test_batch_book_costs_half_and_draws_what_batch_missed_on_standard(store, cl
     assert request["generationConfig"] == {"responseModalities": ["IMAGE"]}
     assert request["contents"][0]["parts"][1]["inlineData"]["mimeType"] == "image/jpeg"
     assert fake.images == 2                     # one request failed in the job, one never came back
-    assert costs() == [("book panel", 0.134)] * 2 + [("book panel (batch)", 0.067)] * 5
+    assert costs() == [("book panel", 0.140)] * 2 + [("book panel (batch)", 0.070)] * 5
+    storyboard = [line for line in db.order_costs("order1") if line["step"] == "storyboard"]
+    assert len(storyboard) == 1 and storyboard[0]["usd"] == pytest.approx(26_000 * 0.75e-6 + 2_000 * 3.75e-6)
 
 
 @needs_ffmpeg
@@ -196,7 +200,7 @@ def test_restarted_batch_order_waits_on_the_same_job(store, clip):
 
     pipeline.run(book_order(clip, "batch"), client=fake, sleep=lambda s: None, now=lambda: 0)
     assert fake.created == 1 and fake.storyboards == 1 and fake.images == 0
-    assert costs() == [("book panel (batch)", 0.067)] * 7
+    assert costs() == [("book panel (batch)", 0.070)] * 7
 
 
 @needs_ffmpeg
@@ -206,7 +210,7 @@ def test_batch_past_the_deadline_is_cancelled_and_drawn_on_standard(store, clip)
     pipeline.run(book_order(clip, "batch"), client=fake,
                  sleep=lambda s: clock.__setitem__(0, clock[0] + 30 * 3600), now=lambda: clock[0])
     assert fake.cancelled == ["batches/1"] and fake.images == 7
-    assert costs() == [("book panel", 0.134)] * 7
+    assert costs() == [("book panel", 0.140)] * 7
 
 
 @needs_ffmpeg
@@ -215,7 +219,7 @@ def test_standard_book_reuses_panels_already_drawn(store, clip):
     pipeline.run(book_order(clip, "standard"), client=fake)
     pipeline.run(book_order(clip, "standard"), client=fake)
     assert fake.created == 0 and fake.storyboards == 1 and fake.images == 7
-    assert costs() == [("book panel", 0.134)] * 7
+    assert costs() == [("book panel", 0.140)] * 7
 
 
 # ---------- ready email and download period ----------
