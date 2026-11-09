@@ -1,19 +1,32 @@
-"""Video -> manga pipeline.
+"""Video -> manga book pipeline.
 
-1. Pull frames from the clip with ffmpeg.
-2. Ask a Gemini text model to storyboard 3-5 pages from the frames (JSON).
-3. Draw each panel with the Gemini image model, using the matching frame as pose reference.
-   Orders made in the "batch" API style send all panels as one Gemini Batch API job at half price;
-   anything the job doesn't return is drawn with standard calls.
-4. Letter captions and SFX with Pillow, lay out pages, save JPGs + one PDF.
+The demo books were faithful because every panel was drawn from facts checked frame by frame, from a crop
+that follows the lead, with a character sheet and a check-and-fix pass. This pipeline does the same:
 
-The storyboard and every finished panel are saved in the order's folder, and so is the batch job's name.
-A restarted order reuses them, so it doesn't pay for the same panel, or the same batch job, twice.
+1. Facts first. Sample the clip at STORY_FPS and ask the text model what actually happens: the teams and
+   their kits, the lead, every event with its time and a box around it, how it ends, and the broadcast
+   graphics. It must say "unclear" rather than guess, and never report a foul, whistle or reaction it can't see.
+2. Zoom and plan. Cut a zoomed crop of every event from the full-resolution clip and ask again: correct the
+   facts from the zooms, then plan the panels from those events only, each with an exact time and a box.
+3. Each panel's source picture is cut from the full-resolution frame at its time, with the broadcast
+   graphics painted out, cropped to the panel's box and shape.
+4. One character sheet of the lead is drawn per order and sent with every panel, with the style reference,
+   the cast's clothes colours, the players' age and a strict "redraw this picture" prompt (not flipped, no
+   extra people, no text). Orders made in the "batch" API style send all panels as one Gemini Batch API job
+   at half price; anything the job doesn't return is drawn with standard calls.
+5. A cheap model checks every panel against its source and the sheet. A flagged panel gets one fix (an image
+   edit, or a redraw if it came out mirrored or with extra people), at most BOOK_MAX_FIXES per book, kept only
+   if a second check finds fewer problems.
+6. Letter captions and SFX with Pillow, lay out pages, save JPGs + one PDF.
+
+The facts, the plan, the sheet, every finished panel and every check are saved in the order's folder, and
+so is the batch job's name. A restarted order reuses them, so it doesn't pay for the same call twice.
 
 GEMINI_API_KEY is read from the environment (see settings.py).
 """
 import base64
 import json
+import math
 import subprocess
 import textwrap
 import time
@@ -23,7 +36,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import db, settings
+from . import db, settings, video as clips
 
 STYLE_PROMPTS = {
     "miyazaki": "hand-painted Japanese animated-film look: soft watercolour backgrounds, clean warm line art, "
@@ -37,6 +50,12 @@ STYLE_PROMPTS = {
     "onepiece": "exuberant adventure manga look: rubbery exaggerated poses, huge expressions, bright ocean blues, "
                 "sunny yellows and reds, playful thick outlines",
 }
+# Black-and-white styles keep only the clothes in colour, like the moving-manga video; the rest are full colour.
+# Without this the model mixed colour and black-and-white panels in one book.
+PALETTE = {"slamdunk": "black-and-white ink and screentone; only the jerseys and clothes keep their real colours"}
+FULL_COLOUR = "full colour, with every jersey and clothes colour exactly as in the video"
+# Styles that have a drawing-technique reference image (copy the technique only, never the content).
+STYLE_REFS = {"slamdunk": lambda: settings.VIDEO_STYLE_REF}
 THEME_TONE = {
     "sports": "a dramatic sports moment with tension and a big payoff",
     "travel": "a warm travel or home-life slice-of-life story",
@@ -44,15 +63,89 @@ THEME_TONE = {
     "comedy": "a light comedy with a punchline in the last panel",
 }
 PAGE_W, PAGE_H, MARGIN, GUTTER = 1654, 2339, 70, 28
-# Cost per panel for GEMINI_IMAGE_MODEL (gemini-3-pro-image, 1K), USD, measured 2026-11-09: 1,120 image tokens
+# Aspect ratios the image model can draw; each panel asks for the one nearest its box on the page.
+ASPECTS = ["21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16"]
+# Cost per image call for GEMINI_IMAGE_MODEL (gemini-3-pro-image, 1K), USD, measured 2026-11-09: 1,120 image tokens
 # at $120/M ($0.134) plus about 650 input tokens at $2/M and 380 thinking/text tokens at $12/M. The Batch API
-# is documented at half price. Keep in step with the Gemini pricing page.
+# is documented at half price. Each extra reference image adds about 1,100 input tokens ($0.002). Keep in step
+# with the Gemini pricing page.
 PANEL_PRICE = {"standard": 0.140, "batch": 0.070}
 # GEMINI_TEXT_MODEL (gemini-3.8-flash) per token: $0.75/M in, $3.75/M out incl. thinking, until 2026-12-31.
-# Google doubles both on 2027-01-01. A 24-frame storyboard is about 26.5k tokens in, 1.7k out: about $0.03.
+# Google doubles both on 2027-01-01. The two storyboard calls together are about 45-60k tokens in: about $0.05.
 STORYBOARD_PRICE_IN, STORYBOARD_PRICE_OUT = 0.75 / 1e6, 3.75 / 1e6
+# VIDEO_CHECK_MODEL (gemini-3.5-flash-lite) per token, for the panel checks: about $0.001 a panel.
+CHECK_PRICE_IN, CHECK_PRICE_OUT = clips.CHECK_PRICE_IN, clips.CHECK_PRICE_OUT
 BATCH_DONE = {"JOB_STATE_SUCCEEDED", "JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"}
-PHOTO_NOTE = "Keep the lead character's appearance consistent with this portrait reference."
+PHOTO_NOTE = "The last image is a portrait of the lead: keep the lead's face and hair consistent with it."
+
+FACTS_PROMPT = """These {n} frames come from one short video, in order; frame k is at t = k/{fps:g} seconds ({dur:.1f} s in all).
+Before anyone draws a manga from it, write down the facts. Report only what the frames show. Where something is too
+small or blurry to tell, write "unclear" instead of guessing. Never report a foul, whistle, referee's call, contact,
+injury, celebration or crowd reaction that you cannot see.
+Answer JSON only:
+{{"overlays": [[ymin, xmin, ymax, xmax], ...] boxes (0-1000 scale) around graphics drawn on top of the picture (score bar, channel logo, captions); [] if none,
+ "on_screen_text": what the score bar or captions say, and whether it changes during the clip,
+ "age": "children" | "teenagers" | "adults" | "mixed": how old the main people look,
+ "groups": [{{"name": team or group name if shown, else "", "look": jersey or clothes colours and numbers}}],
+ "others": [one line for each referee, coach or bystander who appears: clothes, where, what they do],
+ "lead": {{"look": clothes colour, number if any, hair, build, "why": why this is the person to follow, e.g. the one who shoots}},
+ "events": [{{"t": seconds, "what": what happens and who does it (by clothes and number), with screen-left/screen-right as seen in the frame; in a sport, the exact technique (pull-up jump shot, layup, floater, crossover, behind-the-back dribble, pass...), "box": [ymin, xmin, ymax, xmax] around the people involved at that time (0-1000 scale), "certain": true or false}}],
+ "ending": how it ends, e.g. "the shot goes in at 7.8 s", "the shot misses", "unclear"}}
+List 4 to 14 events in time order, covering the whole clip."""
+
+PLAN_PROMPT = """You are a manga editor. These {n} frames follow the play of one short video ({dur:.1f} s), zoomed in on
+where the action is: "Zoom frame k" is at t = k/{fps:g} s. Work only from what these frames show; where something is
+too small or blurry to tell, say "unclear" instead of guessing.
+First, for EVERY frame, note who has the ball (clothes colour and number, or "in the air", "in the net", "loose",
+"unclear") and what they do. Then write the facts from those notes: who the lead is (the person who makes the main
+play, e.g. who takes the shot), each event with its time and the exact technique (pull-up jump shot, layup, floater,
+crossover, pass...; a layup is laid in from beside the rim, a shot released further out while jumping straight up is
+a jump shot), and how it ends (whether a shot goes in, and when). Never report a foul, whistle, call, contact,
+injury, celebration or crowd reaction that you cannot see.
+Then plan a manga telling {tone}, using ONLY those events, in time order. Build tension with framing (close-ups,
+low angles, faces and reactions that are visible) and with captions, never by adding events. Follow the lead in most
+panels and give the ending its own big panel.
+About one panel per event: 6 to 12 panels on 2 to 4 pages, 3 or 4 panels per page. Captions and sound effects in
+{lang}; keep each caption under 20 characters, and only say what the facts show (no invented scores, names or rules).
+Context from a first look at the whole picture (teams and on-screen text only): {context}
+Answer JSON only:
+{{"ball": [one short note per frame, in order],
+ "facts": {{"lead": who the lead is and why, "events": [{{"t": seconds, "what": what happens}}], "ending": how it ends}},
+ "title": str,
+ "cast": {{"age": "children" | "teenagers" | "adults" | "mixed",
+          "lead": one line, e.g. "black jersey number 5 with a white number, short black hair, slim teenage boy",
+          "groups": [one line per team or group: name if shown, clothes colours],
+          "others": [one line per adult or bystander who appears in a panel]}},
+ "pages": [{{"panels": [{{"t": seconds (the exact moment to draw),
+    "box": [ymin, xmin, ymax, xmax] the part of the zoom frame nearest to t that this panel shows (0-1000 scale): tight
+           around one person for a close-up, around the action for a medium shot, the whole zoom frame for a wide shot,
+    "shot": "wide|medium|close-up",
+    "description": what to draw, in English: who is where (screen-left/right as in the video, never flipped), clothes
+           colours and numbers, the exact pose and move, where the ball is,
+    "caption": str or "", "sfx": str or ""}}]}}]}}"""
+
+SHEET_PROMPT = (
+    "Image 1 is a zoomed picture of the lead of a manga, from a real video. Draw a character reference sheet of this "
+    "one person: full-body front view, back view and side view, and a head close-up, side by side on a plain white "
+    "background. The lead: {lead}. {age} Keep the real clothes colours from image 1. Image 1 may show other people "
+    "too: draw only the lead described here. Give the jersey a number only if that description names one; otherwise "
+    "leave the jersey plain. Style: {style}; {palette}.{technique}{photo} No other people. No text or labels anywhere "
+    "except that jersey number.")
+
+CHECK_PROMPT = (
+    "Image 1 is a picture from a real video, image 2 is a manga panel drawn from it{sheet}. Answer JSON only: "
+    '{{"text": true if image 2 shows any letters, words, logos or numbers other than numbers on clothes, '
+    '"extra_people": true if image 2 adds a large person who is not in image 1, '
+    '"flipped": true if image 2 is a left-right mirror image of image 1, '
+    '"colours_ok": true if every person in image 2 wears the same clothes colour as in image 1, '
+    '"lead_ok": {lead_q}, '
+    '"style_ok": true if image 2 is a hand-drawn manga drawing in {palette}, false if it looks like a photo or uses '
+    'the wrong colours, '
+    '"fix": one short instruction to fix the problems, or ""}}')
+FIX_PROMPT = (
+    "Edit the first image, a manga panel. Keep everything else identical: the same drawing style, framing, people, "
+    "poses and colours. {fix} {sheet}Remove any letters, logos or words except numbers on clothes. "
+    "Output one single illustration.")
 
 
 def _client():
@@ -62,56 +155,343 @@ def _client():
     return genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
-def extract_frames(video: Path, out: Path, max_frames: int = 36) -> list[Path]:
+# ---------- facts and storyboard ----------
+
+def extract_frames(video: Path, out: Path, fps: float, max_frames: int) -> tuple[list[Path], float]:
+    """Evenly spaced frames for the storyboard, 768 px wide. Frame k is at k / fps seconds."""
     out.mkdir(parents=True, exist_ok=True)
-    dur = float(subprocess.check_output(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)]).strip() or 10)
-    fps = min(2.0, max_frames / max(dur, 1))
+    for old in out.glob("f_*.jpg"):
+        old.unlink()
+    dur, _, _ = clips.probe(video)
+    fps = min(fps, max_frames / max(dur, 1))
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(video), "-vf", f"fps={fps:.3f},scale=768:-2",
                     "-frames:v", str(max_frames), str(out / "f_%03d.jpg")], check=True)
-    return sorted(out.glob("f_*.jpg"))
+    return sorted(out.glob("f_*.jpg")), fps
 
 
-def storyboard(client, frames: list[Path], theme: str, lang: str, oid: str | None = None) -> dict:
+def _text_call(client, oid: str | None, step: str, contents: list, model: str, price_in: float, price_out: float,
+               sleep=time.sleep) -> dict:
     from google.genai import types
-    prompt = f"""You are a manga editor. These {len(frames)} frames come from one short video, in order (frame 0 first).
-Plan a 3 to 5 page manga telling {THEME_TONE[theme]}, using only what actually happens in the frames.
-Each page has 3 or 4 panels. Write captions and sound effects in {lang}; keep each caption under 20 characters.
-Return JSON: {{"title": str, "pages": [{{"panels": [{{"frame": int, "shot": "wide|medium|close-up",
-"description": str (what to draw, in English), "caption": str or "", "sfx": str or ""}}]}}]}}"""
-    parts = [prompt] + [Image.open(f) for f in frames]
-    r = client.models.generate_content(model=settings.GEMINI_TEXT_MODEL, contents=parts,
-                                       config=types.GenerateContentConfig(response_mime_type="application/json"))
+    r = clips._retry(lambda: client.models.generate_content(
+        model=model, contents=contents, config=types.GenerateContentConfig(response_mime_type="application/json")),
+        sleep)
     u = getattr(r, "usage_metadata", None)
     if oid and u:
         tin = u.prompt_token_count or 0
         tout = (u.candidates_token_count or 0) + (getattr(u, "thoughts_token_count", 0) or 0)
-        db.add_cost(oid, "storyboard", settings.GEMINI_TEXT_MODEL, tin + tout,
-                    tin * STORYBOARD_PRICE_IN + tout * STORYBOARD_PRICE_OUT)
-    return json.loads(r.text)
+        db.add_cost(oid, step, model, tin + tout, tin * price_in + tout * price_out)
+    try:
+        data = json.loads(r.text)
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
-def panel_prompt(panel: dict, style: str, aspect: str) -> str:
-    return (f"Draw ONE single manga panel ({panel['shot']} shot) in a {STYLE_PROMPTS[style]}. "
-            f"Scene: {panel['description']}. Use the photo only as pose and composition reference. "
-            "No text, no speech bubbles, no sound effects, no logos; jersey numbers only. "
-            f"Aspect ratio {aspect}.")
+def _box(value) -> tuple[float, float, float, float] | None:
+    """A [ymin, xmin, ymax, xmax] box on the 0-1000 scale, or None if it isn't one."""
+    try:
+        y0, x0, y1, x1 = (min(1000.0, max(0.0, float(v))) for v in value)
+    except (TypeError, ValueError):
+        return None
+    return (y0, x0, y1, x1) if y1 - y0 >= 5 and x1 - x0 >= 5 else None
 
 
-def draw_panel(client, frame: Path, panel: dict, style: str, aspect: str,
-               photo: Path | None = None) -> Image.Image:
+def still(video: Path, t: float, out: Path, overlays: list | None = None) -> Path:
+    """The full-resolution frame at t seconds, with broadcast graphics painted out."""
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp.jpg")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{max(0.0, t):.3f}", "-i", str(video),
+                        "-frames:v", "1", "-q:v", "2", str(tmp)], check=True)
+        if not tmp.exists():         # past the last frame: take the last one
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-sseof", "-0.2", "-i", str(video), "-frames:v", "1",
+                            "-q:v", "2", "-update", "1", str(tmp)], check=True)
+        clips.paint_out([{"src": tmp}], overlays or [])
+        tmp.replace(out)
+    return out
+
+
+def _crop_rect(size: tuple[int, int], box, ratio: float, min_frac: float = 0.28,
+               pad: float = 0.12) -> tuple[int, int, int, int]:
+    """The rectangle (pixels) around box (0-1000 scale), padded, at least min_frac of the frame wide, grown to the
+    width/height ratio and kept inside the frame. A missing box gives the whole frame at that ratio."""
+    W, H = size
+    b = _box(box)
+    if b:
+        y0, x0, y1, x1 = b[0] * H / 1000, b[1] * W / 1000, b[2] * H / 1000, b[3] * W / 1000
+        w, h = (x1 - x0) * (1 + 2 * pad), (y1 - y0) * (1 + 2 * pad)
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    else:
+        w, h, cx, cy = W, H, W / 2, H / 2
+    w = max(w, min_frac * W)
+    if w / h < ratio:
+        w = h * ratio
+    else:
+        h = w / ratio
+    s = min(1.0, W / w, H / h)          # never larger than the frame
+    w, h = w * s, h * s
+    left = min(max(0.0, cx - w / 2), W - w)
+    top = min(max(0.0, cy - h / 2), H - h)
+    return int(left), int(top), int(left + w), int(top + h)
+
+
+def crop(img: Image.Image, box, ratio: float, min_frac: float = 0.28, pad: float = 0.12) -> Image.Image:
+    return img.crop(_crop_rect(img.size, box, ratio, min_frac, pad))
+
+
+def storyboard(client, video: Path, work: Path, theme: str, lang: str, oid: str | None = None,
+               sleep=time.sleep) -> dict:
+    """Where first, from whole frames (the play's position over time, the broadcast graphics, the teams); then who
+    does what, from zoomed frames that follow the play, and panels planned only from those facts. Players in a wide
+    gym shot are 40 px tall in a whole frame: from those alone the model named the wrong shooter and ending."""
+    frames, fps = extract_frames(video, work / "frames", settings.STORY_FPS, settings.STORY_MAX_FRAMES)
+    dur, _, _ = clips.probe(video)
+    facts_file = work / "facts.json"
+    if facts_file.exists():
+        facts = json.loads(facts_file.read_text(encoding="utf-8"))
+    else:
+        facts = _text_call(client, oid, "storyboard (facts)",
+                           [FACTS_PROMPT.format(n=len(frames), fps=round(fps, 3), dur=dur)]
+                           + [_part(f) for f in frames],
+                           settings.GEMINI_TEXT_MODEL, STORYBOARD_PRICE_IN, STORYBOARD_PRICE_OUT, sleep)
+        facts_file.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
+    overlays = facts.get("overlays") or []
+    rects, zooms = [], []
+    for k in range(len(frames)):
+        t = _clamp_t(k / fps, dur)
+        full = Image.open(still(video, t, work / "src" / f"t_{t:.2f}.jpg", overlays)).convert("RGB")
+        rect = follow_box(facts.get("events") or [], t, full.size)
+        rects.append(rect)
+        zooms += [f"Zoom frame {k} (t = {t:.2f} s):", _part(full.crop(rect), 768)]
+    plan = _text_call(client, oid, "storyboard (panels)",
+                      [PLAN_PROMPT.format(dur=dur, n=len(frames), fps=round(fps, 3),
+                                          tone=THEME_TONE.get(theme, THEME_TONE["sports"]), lang=lang,
+                                          context=json.dumps(_context(facts), ensure_ascii=False))] + zooms,
+                      settings.GEMINI_TEXT_MODEL, STORYBOARD_PRICE_IN, STORYBOARD_PRICE_OUT, sleep)
+    return normalise_plan(plan, facts, dur, rects=rects, fps=fps, size=full.size)
+
+
+def _context(facts: dict) -> dict:
+    """What the zoom pass may take from the whole-frame pass. Not who did what: from 40 px players the first pass
+    named the wrong shooter, and given its events the second pass repeated them instead of looking."""
+    return {k: facts.get(k) for k in ("on_screen_text", "age", "groups", "others") if facts.get(k)}
+
+
+def follow_box(events: list, t: float, size: tuple[int, int], min_frac: float = 0.45) -> tuple[int, int, int, int]:
+    """A 16:9 crop rectangle (pixels) that follows the play: the event boxes, interpolated in time."""
+    W, H = size
+    marks = sorted(((float(e["t"]), b) for e in events if isinstance(e, dict)
+                    for b in [_box(e.get("box"))] if b and _is_number(e.get("t"))), key=lambda m: m[0])
+    if not marks:
+        box = None
+    elif t <= marks[0][0]:
+        box = marks[0][1]
+    elif t >= marks[-1][0]:
+        box = marks[-1][1]
+    else:
+        i = max(i for i, m in enumerate(marks) if m[0] <= t)
+        (t0, b0), (t1, b1) = marks[i], marks[i + 1]
+        a = 0 if t1 == t0 else (t - t0) / (t1 - t0)
+        box = tuple(v0 + a * (v1 - v0) for v0, v1 in zip(b0, b1))
+    return _crop_rect(size, box, 16 / 9, min_frac, 0.25)
+
+
+def _is_number(v) -> bool:
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _jpeg(source, longest: int | None = None) -> bytes:
+    """JPEG bytes of a path or an image. The SDK sends a cropped or converted PIL image as PNG, which made
+    requests with a dozen pictures several times larger (and slow enough to fail at the gateway)."""
+    if isinstance(source, (str, Path)):
+        path = Path(source)
+        if longest is None and path.suffix.lower() in (".jpg", ".jpeg"):
+            return path.read_bytes()
+        with Image.open(path) as img:
+            return _jpeg(img.convert("RGB"), longest)
+    img = source.convert("RGB")
+    if longest:
+        img = img.copy()
+        img.thumbnail((longest, longest))
+    buf = BytesIO()
+    img.save(buf, "JPEG", quality=90)
+    return buf.getvalue()
+
+
+def _part(source, longest: int | None = None):
     from google.genai import types
-    references = [panel_prompt(panel, style, aspect), Image.open(frame)]
-    if photo:
-        references.extend([PHOTO_NOTE, Image.open(photo)])
-    r = client.models.generate_content(
-        model=settings.GEMINI_IMAGE_MODEL, contents=references,
-        config=types.GenerateContentConfig(response_modalities=["IMAGE"]))
-    for part in r.candidates[0].content.parts:
-        if part.inline_data:
-            return Image.open(BytesIO(part.inline_data.data)).convert("RGB")
+    return types.Part.from_bytes(data=_jpeg(source, longest), mime_type="image/jpeg")
+
+
+def _clamp_t(t, dur: float) -> float:
+    try:
+        t = float(t)
+    except (TypeError, ValueError):
+        t = 0.0
+    return min(max(0.0, t), max(0.0, dur - 0.05))
+
+
+def normalise_plan(plan: dict, facts: dict, dur: float, rects: list | None = None, fps: float = 2.0,
+                   size: tuple[int, int] | None = None) -> dict:
+    """Keep only pages with 1-4 well-formed panels, so the layout and the panel prompts can rely on the fields.
+    Panel boxes come on the zoom frame nearest their time; they are turned into boxes on the full frame."""
+    pages = []
+    for page in plan.get("pages") or []:
+        panels = [p for p in (page or {}).get("panels") or [] if isinstance(p, dict)][:4]
+        for p in panels:
+            if "t" not in p and "frame" in p:            # plans saved before 2026-11-09 used 2 fps frame numbers
+                p["t"] = float(p.get("frame") or 0) / 2
+            p["t"] = _clamp_t(p.get("t"), dur)
+            p["shot"] = p.get("shot") if p.get("shot") in ("wide", "medium", "close-up") else "medium"
+            p["description"] = str(p.get("description") or "")
+            if rects and size:
+                p["box"] = _zoom_to_full(p.get("box"), rects[min(len(rects) - 1, round(p["t"] * fps))], size)
+        if panels:
+            pages.append({"panels": panels})
+    if not pages:
+        raise RuntimeError("The storyboard came back without panels")
+    cast = plan.get("cast") if isinstance(plan.get("cast"), dict) else {}
+    lead = facts.get("lead") if isinstance(facts.get("lead"), dict) else {}
+    cast.setdefault("lead", lead.get("look") or "")
+    cast.setdefault("age", facts.get("age") or "")
+    cast.setdefault("groups", [g.get("look", "") for g in facts.get("groups") or [] if isinstance(g, dict)])
+    return {"title": plan.get("title") or "", "cast": cast, "pages": pages,
+            "facts": plan.get("facts") or {}, "overlays": facts.get("overlays") or []}
+
+
+def _zoom_to_full(box, rect, size) -> list[float]:
+    """A box on a zoom frame (0-1000) as a box on the full frame (0-1000). No box: the whole zoom frame."""
+    W, H = size
+    left, top, right, bottom = rect
+    b = _box(box) or (0.0, 0.0, 1000.0, 1000.0)
+    zw, zh = right - left, bottom - top
+    return [round((top + b[0] * zh / 1000) * 1000 / H, 1), round((left + b[1] * zw / 1000) * 1000 / W, 1),
+            round((top + b[2] * zh / 1000) * 1000 / H, 1), round((left + b[3] * zw / 1000) * 1000 / W, 1)]
+
+
+# ---------- panel prompts ----------
+
+def _palette(style: str) -> str:
+    return PALETTE.get(style, FULL_COLOUR)
+
+
+def _age_rule(cast: dict) -> str:
+    age = str(cast.get("age") or "").lower()
+    if age in ("children", "teenagers", "mixed"):
+        who = "children" if age == "children" else "young teenagers (about 12 to 16)"
+        return (f"The players are {who}: keep their real slim, small builds and boyish or girlish young faces; no adult "
+                "muscles, jawlines or stubble. Adults (referees, coaches) stay adults.")
+    return "Everyone keeps their real age and build as in the video."
+
+
+def _cast_rule(cast: dict) -> str:
+    groups = [str(g) for g in cast.get("groups") or [] if str(g).strip()]
+    others = [str(o) for o in cast.get("others") or [] if str(o).strip()]
+    parts = []
+    if groups:
+        parts.append("Teams and clothes: " + "; ".join(groups) + ".")
+    if others:
+        parts.append("Others: " + "; ".join(others) + ".")
+    parts.append("Keep every jersey colour and number exactly as in image 1.")
+    return " ".join(parts)
+
+
+def panel_prompt(panel: dict, style: str, aspect: str, cast: dict | None = None, sheet: bool = False,
+                 technique: bool = False) -> str:
+    cast = cast or {}
+    n = 2
+    lines = [f"Image 1 is a picture from a real video: it is the ONLY source of content. Redraw it as ONE single manga "
+             f"panel ({panel['shot']} shot) in a {STYLE_PROMPTS[style]}; {_palette(style)}.",
+             "Keep the composition, camera angle, framing and every person's position, pose, direction and size exactly "
+             "as in image 1, and the ball exactly where it is. NOT flipped horizontally. No extra or missing people.",
+             _cast_rule(cast), _age_rule(cast)]
+    if sheet:
+        lines.append(f"Image {n} is the character sheet of the lead ({cast.get('lead') or 'the main player'}): wherever "
+                     "the lead appears, draw the lead exactly like the sheet (face, hair, clothes colour, number). Other "
+                     f"players keep their own looks and numbers from image 1. Copy nothing else from image {n}.")
+        n += 1
+    if technique:
+        lines.append(f"Image {n} is a small crop that shows ONLY the drawing technique to use; copy nothing from it "
+                     "(no people, no place, no layout).")
+    lines += [f"In this panel: {panel['description']}",
+              "Remove any broadcast score bar and on-screen graphics. Draw banners, signs and walls as plain shapes "
+              "with no writing. No text, letters, logos or numbers anywhere except numbers on clothes; no speech "
+              "bubbles, no sound effects.",
+              f"Aspect ratio {aspect}. Output one single illustration."]
+    return " ".join(lines)
+
+
+def _image_config(aspect: str):
+    from google.genai import types
+    return types.GenerateContentConfig(response_modalities=["IMAGE"],
+                                       image_config=types.ImageConfig(aspect_ratio=aspect))
+
+
+def _image_from(r) -> Image.Image:
+    for cand in getattr(r, "candidates", None) or []:
+        for part in (getattr(getattr(cand, "content", None), "parts", None) or []):
+            if getattr(part, "inline_data", None) and part.inline_data.data:
+                return Image.open(BytesIO(part.inline_data.data)).convert("RGB")
     raise RuntimeError("Image model returned no image")
 
+
+def _image_call(client, contents: list, aspect: str, sleep=time.sleep) -> Image.Image:
+    last = None
+    for _ in range(2):                         # the model sometimes answers with text only
+        r = clips._retry(lambda: client.models.generate_content(
+            model=settings.GEMINI_IMAGE_MODEL, contents=contents, config=_image_config(aspect)), sleep)
+        try:
+            return _image_from(r)
+        except RuntimeError as exc:
+            last = exc
+    raise last
+
+
+def panel_contents(job: dict, style: str, cast: dict, sheet: Path | None) -> list:
+    """Images first (numbered in the prompt in this order), then the prompt."""
+    ref = _style_ref(style)
+    images = [_part(job["src"])] + ([_part(sheet, 1024)] if sheet else []) + ([_part(ref)] if ref else [])
+    return images + [panel_prompt(job["panel"], style, job["aspect"], cast, bool(sheet), bool(ref))]
+
+
+def _style_ref(style: str) -> Path | None:
+    ref = STYLE_REFS.get(style)
+    path = ref() if ref else None
+    return path if path and Path(path).exists() else None
+
+
+def draw_panel(client, job: dict, style: str, cast: dict, sheet: Path | None, sleep=time.sleep) -> Image.Image:
+    return _image_call(client, panel_contents(job, style, cast, sheet), job["aspect"], sleep)
+
+
+def draw_sheet(client, order: dict, plan: dict, jobs: list[dict], photo: Path | None, work: Path,
+               sleep=time.sleep) -> Path | None:
+    """One character sheet of the lead per order, from the tightest panel source that shows the lead."""
+    out = work / "sheet.png"
+    if out.exists():
+        return out
+    if not jobs:
+        return None
+    rank = {"close-up": 0, "medium": 1, "wide": 2}
+    best = min(jobs, key=lambda j: rank.get(j["panel"].get("shot"), 3))
+    style, ref = order["style"], _style_ref(order["style"])
+    images = [_part(best["src"])] + ([_part(ref)] if ref else []) + ([_part(photo, 1024)] if photo else [])
+    prompt = SHEET_PROMPT.format(
+        lead=plan.get("cast", {}).get("lead") or "the main player", age=_age_rule(plan.get("cast", {})),
+        style=STYLE_PROMPTS[style], palette=_palette(style),
+        technique=" Image 2 shows ONLY the drawing technique to use; copy nothing else from it." if ref else "",
+        photo=f" {PHOTO_NOTE}" if photo else "")
+    art = _image_call(client, images + [prompt], "16:9", sleep)
+    _save(art, out)
+    db.add_cost(order["id"], "character sheet", settings.GEMINI_IMAGE_MODEL, 1, PANEL_PRICE["standard"])
+    return out
+
+
+# ---------- lettering and layout ----------
 
 def _font(size):
     try:
@@ -151,51 +531,74 @@ def layout(n: int) -> list[tuple[int, int, int, int]]:
     return boxes
 
 
+def nearest_aspect(ratio: float) -> str:
+    return min(ASPECTS, key=lambda a: abs(math.log(ratio) - math.log(_ratio(a))))
+
+
+def _ratio(aspect: str) -> float:
+    w, h = aspect.split(":")
+    return float(w) / float(h)
+
+
+# ---------- the order ----------
+
 def run(order: dict, progress=lambda p: None, client=None, sleep=time.sleep, now=time.time) -> Path:
     work = settings.DATA_DIR / "jobs" / order["id"]
-    frames = extract_frames(Path(order["video"]), work / "frames")
-    progress(8)
+    work.mkdir(parents=True, exist_ok=True)
+    src = Path(order["video"])
     client = client or _client()
     lang = "Simplified Chinese" if order.get("lang") == "zh" else "English"
     plan_file = work / "plan.json"
     if plan_file.exists():      # a restarted order keeps its storyboard, so saved panels and batch results still fit
         plan = json.loads(plan_file.read_text(encoding="utf-8"))
     else:
-        plan = storyboard(client, frames, order["theme"], lang, order["id"])
+        plan = storyboard(client, src, work, order["theme"], lang, order["id"], sleep)
         plan_file.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
     progress(15)
-    jobs = panel_jobs(plan, frames)
+    jobs = panel_jobs(plan, src, work)
     photo = Path(order["photo"]) if order.get("photo") else None
+    sheet = draw_sheet(client, order, plan, jobs, photo, work, sleep)
+    progress(20)
     if order.get("api_style") == "batch":
-        draw_batch(client, order, jobs, photo, work, progress, sleep, now)
-    draw_standard(client, order, jobs, photo, work, progress)    # after a batch: only what it didn't return
+        draw_batch(client, order, jobs, plan, sheet, work, progress, sleep, now)
+    draw_standard(client, order, jobs, plan, sheet, work, progress, sleep)   # after a batch: only what it missed
+    check_and_fix(client, order, jobs, plan, sheet, work, progress, sleep)
     pages = []
     for pi, page in enumerate(plan["pages"]):
-        sheet = Image.new("RGB", (PAGE_W, PAGE_H), "white")
-        d = ImageDraw.Draw(sheet)
+        page_img = Image.new("RGB", (PAGE_W, PAGE_H), "white")
+        d = ImageDraw.Draw(page_img)
         for job in (j for j in jobs if j["page"] == pi):
             x, y, w, h = job["box"]
             art = Image.open(work / f"{job['key']}.png").convert("RGB")
             art = letter(_cover(art, w, h), job["panel"].get("caption", ""), job["panel"].get("sfx", ""))
-            sheet.paste(art, (x, y))
+            page_img.paste(art, (x, y))
             d.rectangle([x, y, x + w, y + h], outline="black", width=6)
-        sheet.save(work / f"page_{pi + 1}.jpg", quality=92)
-        pages.append(sheet)
+        page_img.save(work / f"page_{pi + 1}.jpg", quality=92)
+        pages.append(page_img)
     progress(97)
     pdf = work / "manga.pdf"
     pages[0].save(pdf, save_all=True, append_images=pages[1:], resolution=200)
     return pdf
 
 
-def panel_jobs(plan: dict, frames: list[Path]) -> list[dict]:
-    """One entry per panel to draw: its key (also the PNG name), page, box on the page, frame and aspect."""
+def panel_jobs(plan: dict, video: Path, work: Path) -> list[dict]:
+    """One entry per panel: its key (also the PNG name), page, box on the page, aspect, and its source picture:
+    the full-resolution frame at the panel's time, graphics painted out, cropped to the panel's box and shape."""
     jobs = []
     for pi, page in enumerate(plan["pages"]):
         for panel, box in zip(page["panels"], layout(len(page["panels"]))):
-            w, h = box[2], box[3]
-            jobs.append({"key": f"P{pi + 1}-{len(jobs) + 1}", "page": pi, "panel": panel, "box": box,
-                         "frame": frames[max(0, min(int(panel.get("frame", 0)), len(frames) - 1))],
-                         "aspect": "16:9" if w / h > 1.3 else "4:3" if w / h > 0.9 else "3:4"})
+            key = f"P{pi + 1}-{len(jobs) + 1}"
+            aspect = nearest_aspect(box[2] / box[3])
+            source = work / "src" / f"{key}.jpg"
+            if not source.exists():
+                t = float(panel.get("t") or 0)
+                full = Image.open(still(video, t, work / "src" / f"t_{t:.2f}.jpg", plan.get("overlays"))).convert("RGB")
+                pic = crop(full, panel.get("box"), _ratio(aspect),
+                           min_frac={"close-up": 0.22, "medium": 0.35}.get(panel.get("shot"), 0.6))
+                if pic.width < 1024:
+                    pic = pic.resize((1024, int(1024 * pic.height / pic.width)), Image.LANCZOS)
+                pic.save(source, quality=92)
+            jobs.append({"key": key, "page": pi, "panel": panel, "box": box, "src": source, "aspect": aspect})
     return jobs
 
 
@@ -205,19 +608,83 @@ def _save(img: Image.Image, out: Path) -> None:
     tmp.replace(out)
 
 
-def draw_standard(client, order: dict, jobs: list[dict], photo: Path | None, work: Path, progress) -> None:
+def draw_standard(client, order: dict, jobs: list[dict], plan: dict, sheet: Path | None, work: Path, progress,
+                  sleep=time.sleep) -> None:
     """Interactive calls, one panel at a time. Panels already on disk are kept."""
     todo = [j for j in jobs if not (work / f"{j['key']}.png").exists()]
     for n, job in enumerate(todo, 1):
-        art = draw_panel(client, job["frame"], job["panel"], order["style"], job["aspect"], photo)
+        art = draw_panel(client, job, order["style"], plan.get("cast") or {}, sheet, sleep)
         _save(art, work / f"{job['key']}.png")
         db.add_cost(order["id"], "book panel", settings.GEMINI_IMAGE_MODEL, 1, PANEL_PRICE["standard"])
-        progress(15 + 80 * (len(jobs) - len(todo) + n) / len(jobs))
+        progress(20 + 65 * (len(jobs) - len(todo) + n) / len(jobs))
+
+
+# ---------- check and fix ----------
+
+def problems(verdict: dict) -> int:
+    """A panel that isn't manga counts most; a mirrored one or one with an extra person next."""
+    return (3 * (verdict.get("style_ok") is False) + 2 * bool(verdict.get("flipped"))
+            + 2 * bool(verdict.get("extra_people")) + bool(verdict.get("text"))
+            + (verdict.get("colours_ok") is False) + (verdict.get("lead_ok") is False))
+
+
+def check_panel(client, order: dict, job: dict, art: Path, sheet: Path | None, sleep=time.sleep) -> dict:
+    images = [_part(job["src"], 768), _part(art, 768)] + ([_part(sheet, 768)] if sheet else [])
+    prompt = CHECK_PROMPT.format(
+        sheet=", image 3 is the character sheet of the lead" if sheet else "",
+        lead_q=("true if the lead in image 2 matches the sheet in image 3 (clothes colour, number, hair), or if the "
+                "lead is not in image 2" if sheet else "true"),
+        palette=_palette(order["style"]))
+    return _text_call(client, order["id"], "panel check", images + [prompt], settings.VIDEO_CHECK_MODEL,
+                      CHECK_PRICE_IN, CHECK_PRICE_OUT, sleep)
+
+
+def check_and_fix(client, order: dict, jobs: list[dict], plan: dict, sheet: Path | None, work: Path, progress,
+                  sleep=time.sleep) -> None:
+    """Check every panel once; give at most BOOK_MAX_FIXES of the worst ones one fix each."""
+    log_file = work / "checks.json"
+    log = json.loads(log_file.read_text()) if log_file.exists() else {}
+    for n, job in enumerate(jobs, 1):
+        if job["key"] not in log:
+            log[job["key"]] = {"verdict": check_panel(client, order, job, work / f"{job['key']}.png", sheet, sleep)}
+            log_file.write_text(json.dumps(log))
+        progress(85 + 5 * n / len(jobs))
+    fixes = sum(1 for entry in log.values() if "fixed" in entry)
+    flagged = sorted((j for j in jobs if problems(log[j["key"]]["verdict"]) and "fixed" not in log[j["key"]]),
+                     key=lambda j: -problems(log[j["key"]]["verdict"]))
+    for job in flagged:
+        if fixes >= settings.BOOK_MAX_FIXES:
+            break
+        before = log[job["key"]]["verdict"]
+        art = work / f"{job['key']}.png"
+        if before.get("flipped") or before.get("extra_people"):
+            # An edit keeps the wrong composition; draw the panel again from its source instead.
+            fixed = draw_panel(client, job, order["style"], plan.get("cast") or {}, sheet, sleep)
+            step = "panel redraw"
+        else:
+            images = [_part(art)] + ([_part(sheet, 1024)] if sheet else [])
+            fixed = _image_call(client, images + [FIX_PROMPT.format(
+                fix=before.get("fix") or "", sheet="The second image is the lead's character sheet: the lead must "
+                "match it. " if sheet else "")], job["aspect"], sleep)
+            step = "panel fix"
+        db.add_cost(order["id"], step, settings.GEMINI_IMAGE_MODEL, 1, PANEL_PRICE["standard"])
+        fixes += 1
+        candidate = work / f"{job['key']}.fix.png"
+        _save(fixed, candidate)
+        after = check_panel(client, order, job, candidate, sheet, sleep)
+        kept = after.get("style_ok") is not False and problems(after) < problems(before)
+        if kept:
+            candidate.replace(art)
+        else:
+            candidate.unlink(missing_ok=True)
+        log[job["key"]].update(fixed=kept, after=after)
+        log_file.write_text(json.dumps(log))
+    progress(95)
 
 
 # ---------- Gemini Batch API ----------
 
-def draw_batch(client, order: dict, jobs: list[dict], photo: Path | None, work: Path, progress,
+def draw_batch(client, order: dict, jobs: list[dict], plan: dict, sheet: Path | None, work: Path, progress,
                sleep=time.sleep, now=time.time) -> int:
     """Draw the missing panels as one Gemini Batch API job and save what comes back. Returns how many.
 
@@ -232,39 +699,33 @@ def draw_batch(client, order: dict, jobs: list[dict], photo: Path | None, work: 
     if state_file.exists():
         state = json.loads(state_file.read_text())
     else:
-        state = _submit_batch(client, order, todo, photo, work, now)
+        state = _submit_batch(client, order, todo, plan, sheet, work, now)
         state_file.write_text(json.dumps(state))
-    progress(20)
+    progress(25)
     job = _wait_batch(client, state, sleep, now)
     return _collect_batch(client, job, order, todo, work)
 
 
-def _jpeg_b64(path: Path, longest: int | None = None) -> str:
-    if longest is None and path.suffix.lower() in (".jpg", ".jpeg"):
-        return base64.b64encode(path.read_bytes()).decode()
-    with Image.open(path) as img:
-        img = img.convert("RGB")
-        if longest:
-            img.thumbnail((longest, longest))
-        buf = BytesIO()
-        img.save(buf, "JPEG", quality=90)
-    return base64.b64encode(buf.getvalue()).decode()
+def _jpeg_b64(path, longest: int | None = None) -> str:
+    return base64.b64encode(_jpeg(path, longest)).decode()
 
 
-def _submit_batch(client, order: dict, todo: list[dict], photo: Path | None, work: Path, now) -> dict:
+def _submit_batch(client, order: dict, todo: list[dict], plan: dict, sheet: Path | None, work: Path, now) -> dict:
     from google.genai import types
-    # The portrait goes into every request, so shrink it to keep the request file small.
-    photo_b64 = _jpeg_b64(photo, 1024) if photo else None
+    # The sheet and the style reference go into every request, so shrink them to keep the request file small.
+    ref = _style_ref(order["style"])
+    shared = [_jpeg_b64(p, 1024) for p in (sheet, ref) if p]
     requests = work / "batch_requests.jsonl"
     with requests.open("w", encoding="utf-8") as f:
         for job in todo:
-            parts = [{"text": panel_prompt(job["panel"], order["style"], job["aspect"])},
-                     {"inlineData": {"mimeType": "image/jpeg", "data": _jpeg_b64(job["frame"])}}]
-            if photo_b64:
-                parts += [{"text": PHOTO_NOTE}, {"inlineData": {"mimeType": "image/jpeg", "data": photo_b64}}]
+            images = [_jpeg_b64(job["src"])] + shared
+            parts = [{"inlineData": {"mimeType": "image/jpeg", "data": data}} for data in images]
+            parts.append({"text": panel_prompt(job["panel"], order["style"], job["aspect"], plan.get("cast") or {},
+                                               bool(sheet), bool(ref))})
             f.write(json.dumps({"key": job["key"], "request": {
                 "contents": [{"role": "user", "parts": parts}],
-                "generationConfig": {"responseModalities": ["IMAGE"]}}}) + "\n")
+                "generationConfig": {"responseModalities": ["IMAGE"],
+                                     "imageConfig": {"aspectRatio": job["aspect"]}}}}) + "\n")
     name = f"mm-{order['id'][:12]}-panels"
     uploaded = client.files.upload(file=str(requests),
                                    config=types.UploadFileConfig(display_name=name, mime_type="jsonl"))

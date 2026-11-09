@@ -23,6 +23,11 @@ PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", "demo")
 GEMINI_API_KEY = env("GEMINI_API_KEY")
 GEMINI_TEXT_MODEL = env("GEMINI_TEXT_MODEL", "gemini-3.8-flash")
 GEMINI_IMAGE_MODEL = env("GEMINI_IMAGE_MODEL", "gemini-3-pro-image")
+# Book storyboard: frames per second sampled for the facts pass (fast moves last about 0.3 s), and a cap.
+STORY_FPS = float(env("STORY_FPS", "4"))
+STORY_MAX_FRAMES = int(env("STORY_MAX_FRAMES", "60"))
+# Book check-and-fix: at most this many panels per book get one fix (an image edit or a redraw, $0.14 each).
+BOOK_MAX_FIXES = int(env("BOOK_MAX_FIXES", "4"))
 # Moving-manga video ("all" product): Nano Banana keyframes, Omni motion, cheap QA model
 VIDEO_IMAGE_MODEL = env("VIDEO_IMAGE_MODEL", "gemini-3.1-flash-image")
 VIDEO_CHECK_MODEL = env("VIDEO_CHECK_MODEL", "gemini-3.5-flash-lite")
