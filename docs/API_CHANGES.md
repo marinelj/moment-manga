@@ -16,6 +16,8 @@ The amount above is an API example, not a price choice. The server reads the app
 
 ## Order creation
 
+`/api/config` also returns `api_style` (`standard` or `batch`), `batch_max_wait_hours` (default 24), `download_days` (default 7) and `ready_email` (true when the server can send the ready email). Show a long-wait notice before payment only when `generation` is `live` and `api_style` is `batch`.
+
 `POST /api/orders` accepts multipart form fields:
 
 | Field | Required | Value |
@@ -24,6 +26,7 @@ The amount above is an API example, not a price choice. The server reads the app
 | `photo` | No | Valid JPEG, PNG, or WebP image, at most 20 MB and 40 million pixels |
 | `product` | Yes | `book` or `all` (when listed in `products`) |
 | `lang` | Yes | `en` or `zh` |
+| `email` | No | Buyer's address for the ready email, at most 254 characters. 400 if it isn't an address. Ignored (not stored) while `ready_email` is false |
 
 For `all`, the clip must be at most `video_max_seconds` (default 15) or the server answers 400 and creates no order.
 
@@ -33,13 +36,13 @@ The response is `{"id":"...","status":"unpaid","payment":{"pay_url":"/api/orders
 
 `GET /api/orders/{id}` requires the buyer cookie, `X-Buyer-Token` header, or `?t=<token>` for Alipay web orders. The customer page stores `buyer_token` in localStorage per API base and order, and sends the header when polling. Its active order is kept in sessionStorage so a reload or language switch restores access, including completed downloads.
 
-It returns `id`, `status`, and `progress`. An unpaid order also returns its payment object. Status values are `unpaid`, `paid`, `processing`, `done`, and `failed`. An order created while `generation` is `sample` also returns `payment_test: true` for its whole life: show it as a payment test (the files are samples, not generated manga) rather than "drawing your moment". A done order returns `downloads.book` pointing to `/api/orders/{id}/manga.pdf`. A done `all` order also returns `downloads.clip` pointing to `/api/orders/{id}/manga.mp4`. Both downloads accept the same buyer cookie or token.
+It returns `id`, `status`, and `progress`. A real order made in the batch API style also returns `api_style: "batch"`: its book can take up to `batch_max_wait_hours` hours. A done order returns `files_expire_at` (Unix seconds): its files are deleted `download_days` days after it is done. After that the status returns `files_expired: true` and no `downloads`, and both download routes answer 410. An unpaid order also returns its payment object. Status values are `unpaid`, `paid`, `processing`, `done`, and `failed`. An order created while `generation` is `sample` also returns `payment_test: true` for its whole life: show it as a payment test (the files are samples, not generated manga) rather than "drawing your moment". A done order returns `downloads.book` pointing to `/api/orders/{id}/manga.pdf`. A done `all` order also returns `downloads.clip` pointing to `/api/orders/{id}/manga.mp4`. Both downloads accept the same buyer cookie or token.
 
 The customer page adds `?t=<token>` to API payment links, both download links, and the completed MP4 preview; tokens are never appended to external payment links. Root-relative `/api/...` URLs are resolved under the configured server base, and already-mounted `/manga/api/...` URLs keep their prefix. For `all`, `progress` runs 0 to 30 while the book is made and 30 to 100 while the video is made; expect about 10 to 20 minutes in total.
 
 The asynchronous `POST /api/pay/notify` verifies the RSA2 signature, application, seller, order number, amount, and trade state before a paid transition. Repeated notifications are idempotent. The status endpoint periodically queries Alipay for an unpaid order to reconcile a missing notification. The browser return route only reports status.
 
-Administrative query, refund, refund query, and close endpoints are under `/api/admin/alipay` and require `Authorization: Bearer <ADMIN_TOKEN>`. `GET /api/admin/status`, `POST /api/admin/generation` and `GET /api/admin/orders/{id}/costs` need no token (debug page). The costs route returns the order's model-call cost ledger: `total_usd` and one line per call with `step`, `model`, `units`, `usd`, and `cached`.
+Administrative query, refund, refund query, and close endpoints are under `/api/admin/alipay` and require `Authorization: Bearer <ADMIN_TOKEN>`. `GET /api/admin/status`, `POST /api/admin/generation`, `POST /api/admin/api-style` and `GET /api/admin/orders/{id}/costs` need no token (debug page). `POST /api/admin/api-style` takes `{"style": "standard" | "batch" | null}`; null goes back to the `GEMINI_API_STYLE` setting. The status also returns `api_style`, `api_style_source` and `batch_max_wait_hours`, and each recent order has its `api_style`. The costs route returns the order's model-call cost ledger: `total_usd` and one line per call with `step`, `model`, `units`, `usd`, and `cached`.
 
 ## Video pipeline
 

@@ -27,8 +27,15 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <div id="msg"></div>
 <p class="muted">The switch applies to new orders. Each order keeps the mode it was created with.</p>
 </div>
+<h2>Gemini API style</h2>
+<div class="card">
+<p class="muted" id="styleExplain"></p>
+<label class="opt"><input type="radio" name="style" value="standard"> Standard: book in about 5 minutes</label><label class="opt"><input type="radio" name="style" value="batch"> Batch: half price for book panels, ready within <span id="batchHours">24</span> hours</label>
+<div id="styleMsg"></div>
+<p class="muted">Only real Gemini orders use it. Batch covers the book panels; the storyboard and the video stay on Standard. Each order keeps the style it was created with.</p>
+</div>
 <h2>Server</h2><div class="card" id="serverinfo"></div>
-<h2>Recent orders</h2><div class="card scroll"><table><thead><tr><th>Created</th><th>Order</th><th>Product</th><th>CNY</th><th>Mode</th><th>Status</th><th>Model cost</th></tr></thead><tbody id="orders"></tbody></table></div>
+<h2>Recent orders</h2><div class="card scroll"><table><thead><tr><th>Created</th><th>Order</th><th>Product</th><th>CNY</th><th>Mode</th><th>API</th><th>Status</th><th>Model cost</th></tr></thead><tbody id="orders"></tbody></table></div>
 </div>
 <script>
 const $=id=>document.getElementById(id);
@@ -45,18 +52,23 @@ function text(tag,value){const el=document.createElement(tag);el.textContent=val
 async function refresh(){const s=await api("/api/admin/status");$("panel").hidden=false;
  $("explain").textContent=s.mode==="live"?"New paid orders call Gemini: about $1–2 per book, $3–4 more per video.":"New paid orders get sample files. No Gemini calls, $0 model cost.";
  document.querySelectorAll('input[name="mode"]').forEach(r=>r.checked=r.value===s.mode);
+ const hours=s.batch_max_wait_hours??24;$("batchHours").textContent=hours;
+ $("styleExplain").textContent=s.api_style==="batch"?"New real orders send all book panels as one Gemini Batch job: about $0.07 a panel instead of $0.14. Google aims for 24 hours and many jobs finish much sooner; after "+hours+" hours the rest is drawn on Standard.":"New real orders call Gemini directly: a book in about 5 minutes at the full price, about $0.14 a panel.";
+ document.querySelectorAll('input[name="style"]').forEach(r=>r.checked=r.value===s.api_style);
  const srv=$("serverinfo");srv.replaceChildren();
  [["Alipay",s.alipay_env==="production"?"PRODUCTION (real money)":"sandbox (test money)"],["Checkout open",s.checkout_ready?"yes":"no"],
   ["Gemini key on server",s.gemini_key_set?"yes":"no"],["Real-money payment test allowed",s.production_payment_test_allowed?"yes (ALLOW_PRODUCTION_PAYMENT_TEST=1)":"no"],
   ["Prices (CNY)",Object.entries(s.prices).map(([k,v])=>k+" ¥"+v).join(", ")||"none"]].forEach(([k,v])=>srv.append(text("div",k+": "+v)));
  if(!s.checkout_ready){const w=text("div",s.mode==="live"&&!s.gemini_key_set?"Checkout is closed: real mode needs GEMINI_API_KEY.":s.mode==="sample"&&s.alipay_env==="production"?"Checkout is closed: sample files with real money need ALLOW_PRODUCTION_PAYMENT_TEST=1.":"Checkout is closed.");w.className="warn";srv.append(w)}
  const tb=$("orders");tb.replaceChildren();s.orders.forEach(o=>{const tr=document.createElement("tr");
-  [new Date(o.created*1000).toLocaleString(),o.id.slice(0,8),o.product||"",o.amount_yuan||"",o.generation||"",o.status+(o.status==="processing"?" "+o.progress+"%":""),"$"+Number(o.cost_usd).toFixed(2)].forEach(v=>tr.append(text("td",v)));
+  [new Date(o.created*1000).toLocaleString(),o.id.slice(0,8),o.product||"",o.amount_yuan||"",o.generation||"",o.generation==="live"?(o.api_style||"standard"):"",o.status+(o.status==="processing"?" "+o.progress+"%":""),"$"+Number(o.cost_usd).toFixed(2)].forEach(v=>tr.append(text("td",v)));
   if(o.error)tr.title=o.error;tb.append(tr)})}
 $("load").onclick=async()=>{if(!onBackend)base=$("server").value.trim().replace(/\/$/,"");
  try{if(!onBackend)localStorage.setItem("mm_api",base)}catch(e){}
  try{await refresh();$("msg").textContent=""}catch(e){$("panel").hidden=true;$("err").textContent=e.message==="Failed to fetch"?"Cannot reach the server. Check the address, that the server is running, and that CORS_ORIGINS includes this site.":e.message}};
 document.querySelectorAll('input[name="mode"]').forEach(r=>r.onchange=async()=>{const mode=r.value;
  try{await api("/api/admin/generation",{method:"POST",body:JSON.stringify({mode})});await refresh();$("msg").textContent="Saved."}catch(e){$("msg").textContent=e.message}});
+document.querySelectorAll('input[name="style"]').forEach(r=>r.onchange=async()=>{const style=r.value;
+ try{await api("/api/admin/api-style",{method:"POST",body:JSON.stringify({style})});await refresh();$("styleMsg").textContent="Saved."}catch(e){$("styleMsg").textContent=e.message}});
 $("load").click();setInterval(()=>{if(!$("panel").hidden)refresh().catch(()=>{})},10000);
 </script></main></body></html>

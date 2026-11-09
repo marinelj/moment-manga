@@ -32,6 +32,12 @@ VIDEO_KF_INTERVAL = float(env("VIDEO_KF_INTERVAL", "0.5"))      # seconds betwee
 VIDEO_MAX_SECONDS = float(env("VIDEO_MAX_SECONDS", "15"))       # longer clips are refused for "all"
 VIDEO_ORDER_BUDGET_USD = float(env("VIDEO_ORDER_BUDGET_USD", "4.00"))  # hard stop per order
 VIDEO_STYLE_REF = Path(env("VIDEO_STYLE_REF", str(Path(__file__).resolve().parent / "assets" / "style_slamdunk.png")))
+# How the book panels reach Gemini. standard: interactive calls, a book in about 5 minutes.
+# batch: one Gemini Batch API job per order at half the panel price; Google aims for 24 hours, and many jobs
+# finish much sooner. The /admin page can override it for new orders; each order keeps the style it was made with.
+GEMINI_API_STYLE = (env("GEMINI_API_STYLE") or "standard").strip().lower()
+BATCH_MAX_WAIT_HOURS = float(env("BATCH_MAX_WAIT_HOURS", "24"))   # then cancel and draw the rest on standard
+BATCH_POLL_SECONDS = float(env("BATCH_POLL_SECONDS", "60"))
 # live: paid orders run the real (paid) Gemini pipelines.
 # sample: paid orders get sample files instead, so payments can be tested without model costs.
 # Default is sample whenever Alipay runs against its sandbox.
@@ -49,6 +55,18 @@ GENERATION_MODE = generation_mode(env("GENERATION_MODE"), PAYMENT_PROVIDER, ALIP
 # Real-money payment test: allow sample mode with ALIPAY_ENV=production (sample files, no model costs).
 # Off unless set to 1, so customers are never charged for sample files by accident.
 ALLOW_PRODUCTION_PAYMENT_TEST = env("ALLOW_PRODUCTION_PAYMENT_TEST", "") == "1"
+# Finished files are deleted this many days after the order is done. The page and the ready email say so.
+DOWNLOAD_DAYS = int(env("DOWNLOAD_DAYS", "7"))
+# Customer page for the order link in the ready email; the Chinese page is <ORDER_PAGE_URL>zh/.
+ORDER_PAGE_URL = (env("ORDER_PAGE_URL") or "https://marinelj.github.io/moment-manga/").rstrip("/") + "/"
+# Optional "your manga is ready" email to buyers who leave an address. Off while SMTP_HOST is empty.
+# Port 465 uses SSL; set SMTP_STARTTLS=1 for port 587.
+SMTP_HOST = env("SMTP_HOST", "")
+SMTP_PORT = int(env("SMTP_PORT", "465"))
+SMTP_USER = env("SMTP_USER", "")
+SMTP_PASSWORD = env("SMTP_PASSWORD", "")
+SMTP_FROM = env("SMTP_FROM", "") or SMTP_USER
+SMTP_STARTTLS = env("SMTP_STARTTLS", "") == "1"
 FONT_PATH = env("FONT_PATH", "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
