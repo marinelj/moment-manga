@@ -210,7 +210,7 @@ def test_batch_book_costs_half_and_draws_what_batch_missed_on_standard(store, cl
     assert fake.images == 1 + 2                 # the sheet; one request failed in the job, one never came back
     assert costs() == [("book panel", 0.140)] * 2 + [("book panel (batch)", 0.070)] * 5
     story = [line for line in db.order_costs("order1") if line["step"].startswith("storyboard")]
-    assert [line["step"] for line in story] == ["storyboard (facts)", "storyboard (panels)"]
+    assert [line["step"] for line in story] == ["storyboard (facts)", "storyboard (panels)", "storyboard (verify)"]
     assert story[0]["usd"] == pytest.approx(26_000 * 0.75e-6 + 2_000 * 3.75e-6)
     assert steps().count("character sheet") == 1 and steps().count("panel check") == 7
 
@@ -284,14 +284,14 @@ def test_a_fix_that_is_no_better_is_thrown_away(store, clip):
 def test_storyboard_sees_dense_frames_then_zooms_and_never_the_score_bar(store, clip):
     fake = FakeGemini()
     pipeline.run(book_order(clip, "standard"), client=fake)
-    facts_call, plan_call = [c for m, c in fake.calls if m == settings.GEMINI_TEXT_MODEL]
+    facts_call, plan_call, verify_call = [c for m, c in fake.calls if m == settings.GEMINI_TEXT_MODEL]
     frames = [x for x in facts_call if getattr(x, "inline_data", None)]
     assert len(frames) == 12                      # 3 s at 4 frames a second
     assert {x.inline_data.mime_type for x in frames} == {"image/jpeg"}
     assert "Never report a foul" in facts_call[0]
     # The second pass watches the same 12 moments again, zoomed on the play.
     assert sum(isinstance(x, str) and x.startswith("Zoom frame ") for x in plan_call) == 12
-    assert "never by adding events" in plan_call[0] and "for EVERY frame, note who has the ball" in plan_call[0]
+    assert "never move a player toward the camera" in plan_call[0] and "for EVERY frame, note who has the ball" in plan_call[0]
     assert "\"w\"" not in plan_call[0]          # the first pass's events (who did what) are not passed on
     # Panel sources are full-resolution crops with the score bar (bottom 10%) painted out.
     src = Image.open(store / "jobs" / "order1" / "src" / "P1-1.jpg")
@@ -456,3 +456,56 @@ def test_dropped_connection_is_retried():
         return "ok"
 
     assert video._retry(flaky, sleep=lambda s: None) == "ok" and len(calls) == 2
+
+
+@needs_ffmpeg
+def test_verify_pass_replaces_panels_the_picture_contradicts_and_drops_unseen_calls(store, clip):
+    """The planning call once turned a made basket into "Rolls off!" and added "The call!" with a whistle."""
+    from types import SimpleNamespace as NS
+    seen = []
+
+    def generate(model, contents, config):
+        seen.append(contents)
+        verdict = {"panels": [{"supported": "no", "seen": "Blue #5 lands under the screen-left hoop; the ball is in the net."},
+                              {"supported": "unclear", "seen": "too small"},
+                              {"supported": "yes", "seen": "the referee holds up two fingers"}]}
+        return NS(text=json.dumps(verdict), usage_metadata=None)
+
+    plan = {"overlays": [], "pages": [{"panels": [
+        {"t": 0.5, "box": [0, 0, 1000, 1000], "shot": "wide", "description": "The ball rolls off the rim.",
+         "caption": "Rolls off!", "sfx": "CLANG"},
+        {"t": 1.0, "box": [0, 0, 1000, 1000], "shot": "medium", "description": "Navy grabs the ball.",
+         "caption": "Rebound secured!", "sfx": "GRAB"},
+        {"t": 2.0, "box": [0, 0, 1000, 1000], "shot": "medium", "description": "The referee signals.",
+         "caption": "The call!", "sfx": "TWEEET"}]}]}
+    work = store / "jobs" / "v"
+    out = pipeline.verify_plan(NS(models=NS(generate_content=generate)), plan, clip, work)
+    p1, p2, p3 = out["pages"][0]["panels"]
+    assert p1["description"].startswith("Blue #5 lands") and p1["caption"] == "" and p1["sfx"] == ""
+    assert p2["caption"] == "Rebound secured!"          # unclear: kept as planned
+    assert p3["caption"] == "" and p3["sfx"] == ""      # no whistles or calls: sound is not in the frames
+    assert sum(isinstance(x, str) and x.startswith("Panel ") for x in seen[0]) == 3
+    # A restart reuses the saved verdicts instead of paying again.
+    pipeline.verify_plan(NS(models=NS(generate_content=generate)), plan, clip, work)
+    assert len(seen) == 1
+
+
+@needs_ffmpeg
+def test_storyboard_plans_again_once_when_the_check_rejects_several_panels(store, clip):
+    class Picky(FakeGemini):
+        verifies = 0
+
+        def _generate(self, model, contents, config):
+            if str(contents[0]).startswith("Each \"Panel k\""):
+                self.verifies += 1
+                no = {"supported": "no", "seen": "blue #15 stands on the left"}
+                answer = [no, no] if self.verifies == 1 else [{"supported": "yes", "seen": "ok"}]
+                return SimpleNamespace(text=json.dumps({"panels": answer}), usage_metadata=None)
+            return super()._generate(model, contents, config)
+
+    fake = Picky()
+    pipeline.run(book_order(clip, "standard"), client=fake)
+    steps = [line["step"] for line in db.order_costs("order1") if line["step"].startswith("storyboard")]
+    assert steps == ["storyboard (facts)", "storyboard (panels)", "storyboard (replan)"]
+    replan = [c for m, c in fake.calls if m == settings.GEMINI_TEXT_MODEL][2]
+    assert "blue #15 stands on the left" in replan[-1] and fake.verifies == 2

@@ -27,6 +27,7 @@ GEMINI_API_KEY is read from the environment (see settings.py).
 import base64
 import json
 import math
+import re
 import subprocess
 import textwrap
 import time
@@ -58,7 +59,7 @@ FULL_COLOUR = "full colour, with every jersey and clothes colour exactly as in t
 # Styles that have a drawing-technique reference image (copy the technique only, never the content).
 STYLE_REFS = {"slamdunk": lambda: settings.VIDEO_STYLE_REF}
 THEME_TONE = {
-    "sports": "a dramatic sports moment with tension and a big payoff",
+    "sports": "a sports moment exactly as it happened, made exciting by framing and captions",
     "travel": "a warm travel or home-life slice-of-life story",
     "portrait": "a quiet, flattering character portrait story focused on faces and emotion",
     "comedy": "a light comedy with a punchline in the last panel",
@@ -91,21 +92,24 @@ Answer JSON only:
  "others": [one line for each referee, coach or bystander who appears: clothes, where, what they do],
  "lead": {{"look": clothes colour, number if any, hair, build, "why": why this is the person to follow, e.g. the one who shoots}},
  "events": [{{"t": seconds, "what": what happens and who does it (by clothes and number), with screen-left/screen-right as seen in the frame; in a sport, the exact technique (pull-up jump shot, layup, floater, crossover, behind-the-back dribble, pass...), "box": [ymin, xmin, ymax, xmax] around the people involved at that time (0-1000 scale), "certain": true or false}}],
- "ending": how it ends, e.g. "the shot goes in at 7.8 s", "the shot misses", "unclear"}}
+ "ending": how it ends, e.g. "the shot goes in at 7.8 s", "the shot misses", "unclear",
+ "hoop": [ymin, xmin, ymax, xmax] box (0-1000 scale) around the basket (backboard and rim) that the main play attacks, or null if there is none}}
 List 4 to 14 events in time order, covering the whole clip."""
 
 PLAN_PROMPT = """You are a manga editor. These {n} frames follow the play of one short video ({dur:.1f} s), zoomed in on
 where the action is: "Zoom frame k" is at t = k/{fps:g} s. Work only from what these frames show; where something is
-too small or blurry to tell, say "unclear" instead of guessing.
+too small or blurry to tell, say "unclear" instead of guessing.{hoop_note}
 First, for EVERY frame, note who has the ball (clothes colour and number, or "in the air", "in the net", "loose",
 "unclear") and what they do. Then write the facts from those notes: who the lead is (the person who makes the main
 play, e.g. who takes the shot), each event with its time and the exact technique (pull-up jump shot, layup, floater,
 crossover, pass...; a layup is laid in from beside the rim, a shot released further out while jumping straight up is
 a jump shot), and how it ends (whether a shot goes in, and when). Never report a foul, whistle, call, contact,
 injury, celebration or crowd reaction that you cannot see.
-Then plan a manga telling {tone}, using ONLY those events, in time order. Build tension with framing (close-ups,
-low angles, faces and reactions that are visible) and with captions, never by adding events. Follow the lead in most
-panels and give the ending its own big panel.
+Then plan a manga telling {tone}, using ONLY those events, in time order. Each panel shows one zoom frame as it
+is: same camera, same people in the same places; never move a player toward the camera, never invent a face, a
+reaction or a close-up that the frame does not show. Follow the lead in most panels and give the ending its own big
+panel. If you cannot see whether a shot goes in, end on the ball in the air rather than guessing. Never write a
+caption or sound effect about a whistle, a foul, a call or a referee's decision (sound is not in the frames).
 About one panel per event: 6 to 12 panels on 2 to 4 pages, 3 or 4 panels per page. Captions and sound effects in
 {lang}; keep each caption under 20 characters, and only say what the facts show (no invented scores, names or rules).
 Context from a first look at the whole picture (teams and on-screen text only): {context}
@@ -124,6 +128,25 @@ Answer JSON only:
     "description": what to draw, in English: who is where (screen-left/right as in the video, never flipped), clothes
            colours and numbers, the exact pose and move, where the ball is,
     "caption": str or "", "sfx": str or ""}}]}}]}}"""
+
+VERIFY_PROMPT = """Each "Panel k" below is a zoomed picture from a real video, followed by what a manga panel
+drawn from it claims to show. For every panel, judge only what the picture shows: "yes" if it supports the claim,
+"no" if it shows something different (another action, another outcome, another person), "unclear" if the picture is
+too small or blurry to tell. Answer JSON only:
+{{"panels": [{{"supported": "yes" | "no" | "unclear",
+  "seen": one sentence: what the picture actually shows (who is where, screen-left/right as in the picture, clothes
+          colours and numbers, where the ball is)}} one per panel, in order]}}"""
+
+REPLAN_NOTE = """A check of your plan below against the frames found panels that tell something their pictures do not
+show:
+{notes}
+Your plan was: {plan}
+Write the plan again in the same JSON shape. Keep only what the frames show: if the panels followed a player who
+does not make the main play, follow the one who does."""
+
+# Captions and sound effects that claim something only sound or a rulebook could show.
+UNSEEN = re.compile(r"whistle|foul|tw+e+t|referee'?s? (call|decision)|\bthe call\b|\bcall(ed)?\b|哨|犯规|判罚|裁判判",
+                    re.IGNORECASE)
 
 SHEET_PROMPT = (
     "Image 1 is a zoomed picture of the lead of a manga, from a real video. Draw a character reference sheet of this "
@@ -261,6 +284,37 @@ def crop(img: Image.Image, box, ratio: float, min_frac: float = 0.28, pad: float
     return img.crop(_crop_rect(img.size, box, ratio, min_frac, pad))
 
 
+HOOP_FPS = 8
+HOOP_NOTE = """
+After the zoom frames come {n} "Hoop frames", {fps} a second, showing only the basket the play attacks, close up.
+Decide whether a shot goes in ONLY from these: it goes in if the ball is seen inside the rim or dropping through the
+net; a ball seen bouncing away from the rim without going through is a miss. Your ending must agree with them."""
+
+
+def hoop_frames(video: Path, out: Path, hoop) -> list[tuple[float, Image.Image]]:
+    """Close-ups of the basket the play attacks, several a second. In a wide gym shot the rim is a few dozen pixels
+    in the zoom frames, and the planning call guessed made or missed differently from run to run; this close-up
+    shows the ball inside the rim or not."""
+    if not hoop:
+        return []
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob("h_*.jpg"):
+        old.unlink()
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(video), "-vf", f"fps={HOOP_FPS}",
+                    "-q:v", "3", str(out / "h_%03d.jpg")], check=True)
+    y0, x0, y1, x1 = hoop
+    cy, cx = (y0 + y1) / 2, (x0 + x1) / 2
+    half_h, half_w = max(y1 - y0, 120) * 0.9, max(x1 - x0, 80) * 0.9          # the rim plus the air around it
+    box = [max(0, cy - half_h), max(0, cx - half_w), min(1000, cy + half_h), min(1000, cx + half_w)]
+    frames = []
+    for k, path in enumerate(sorted(out.glob("h_*.jpg"))):
+        img = Image.open(path).convert("RGB")
+        W, H = img.size
+        frames.append((round(k / HOOP_FPS, 3), img.crop((int(box[1] * W / 1000), int(box[0] * H / 1000),
+                                                         int(box[3] * W / 1000), int(box[2] * H / 1000)))))
+    return frames
+
+
 def storyboard(client, video: Path, work: Path, theme: str, lang: str, oid: str | None = None,
                sleep=time.sleep) -> dict:
     """Where first, from whole frames (the play's position over time, the broadcast graphics, the teams); then who
@@ -285,12 +339,75 @@ def storyboard(client, video: Path, work: Path, theme: str, lang: str, oid: str 
         rect = follow_box(facts.get("events") or [], t, full.size)
         rects.append(rect)
         zooms += [f"Zoom frame {k} (t = {t:.2f} s):", _part(full.crop(rect), 768)]
-    plan = _text_call(client, oid, "storyboard (panels)",
-                      [PLAN_PROMPT.format(dur=dur, n=len(frames), fps=round(fps, 3),
-                                          tone=THEME_TONE.get(theme, THEME_TONE["sports"]), lang=lang,
-                                          context=json.dumps(_context(facts), ensure_ascii=False))] + zooms,
-                      settings.GEMINI_TEXT_MODEL, STORYBOARD_PRICE_IN, STORYBOARD_PRICE_OUT, sleep)
-    return normalise_plan(plan, facts, dur, rects=rects, fps=fps, size=full.size)
+    hoops = hoop_frames(video, work / "hoop", _box(facts.get("hoop")))
+    hoop_note = HOOP_NOTE.format(n=len(hoops), fps=HOOP_FPS) if hoops else ""
+    for t, frame in hoops:
+        zooms += [f"Hoop frame (t = {t:.2f} s):", _part(frame, 384)]
+    asked = [PLAN_PROMPT.format(dur=dur, n=len(frames), fps=round(fps, 3), hoop_note=hoop_note,
+                                tone=THEME_TONE.get(theme, THEME_TONE["sports"]), lang=lang,
+                                context=json.dumps(_context(facts), ensure_ascii=False))] + zooms
+    raw = _text_call(client, oid, "storyboard (panels)", asked, settings.GEMINI_TEXT_MODEL,
+                     STORYBOARD_PRICE_IN, STORYBOARD_PRICE_OUT, sleep)
+    plan = normalise_plan(raw, facts, dur, rects=rects, fps=fps, size=full.size)
+    verdicts = panel_verdicts(client, plan, video, work / "verify.json", oid, sleep)
+    wrong = [(k, p, v) for k, (p, v) in enumerate(zip(_panels(plan), verdicts)) if _rejected(v)]
+    if len(wrong) >= 2:
+        # Several panels tell something their own pictures don't show (e.g. it followed the wrong player):
+        # plan once more, told exactly what the pictures showed.
+        notes = "\n".join(f"- panel at t = {p['t']:.2f} s claimed: {p.get('description', '')} The picture shows: "
+                          f"{v.get('seen')}" for _, p, v in wrong)
+        raw = _text_call(client, oid, "storyboard (replan)",
+                         asked + [REPLAN_NOTE.format(notes=notes, plan=json.dumps(raw, ensure_ascii=False))],
+                         settings.GEMINI_TEXT_MODEL, STORYBOARD_PRICE_IN, STORYBOARD_PRICE_OUT, sleep)
+        plan = normalise_plan(raw, facts, dur, rects=rects, fps=fps, size=full.size)
+        verdicts = panel_verdicts(client, plan, video, work / "verify2.json", oid, sleep)
+    return apply_verdicts(plan, verdicts)
+
+
+def _panels(plan: dict) -> list[dict]:
+    return [p for page in plan["pages"] for p in page["panels"]]
+
+
+def _rejected(verdict: dict) -> bool:
+    return str(verdict.get("supported", "")).lower() == "no" and bool(str(verdict.get("seen") or "").strip())
+
+
+def verify_plan(client, plan: dict, video: Path, work: Path, oid: str | None = None, sleep=time.sleep) -> dict:
+    return apply_verdicts(plan, panel_verdicts(client, plan, video, work / "verify.json", oid, sleep))
+
+
+def panel_verdicts(client, plan: dict, video: Path, out: Path, oid: str | None = None, sleep=time.sleep) -> list:
+    """A second look at every panel's own picture before anything is drawn. The planning call sometimes tells a
+    story the frames don't show (a made basket became "Rolls off!", "Rebound secured!", "The call!")."""
+    if out.exists():
+        return json.loads(out.read_text(encoding="utf-8"))
+    work = out.parent
+    overlays = plan.get("overlays") or []
+    contents = [VERIFY_PROMPT]
+    for k, panel in enumerate(_panels(plan)):
+        full = Image.open(still(video, panel["t"], work / "src" / f"t_{panel['t']:.2f}.jpg", overlays)).convert("RGB")
+        contents += [f"Panel {k}:", _part(crop(full, panel.get("box"), 16 / 9, 0.45, 0.25), 768),
+                     f"Claim {k}: {panel.get('description', '')} Caption: {panel.get('caption', '')}"]
+    answer = _text_call(client, oid, "storyboard (verify)", contents, settings.GEMINI_TEXT_MODEL,
+                        STORYBOARD_PRICE_IN, STORYBOARD_PRICE_OUT, sleep)
+    verdicts = [v if isinstance(v, dict) else {} for v in (answer.get("panels") or [])]
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(verdicts, ensure_ascii=False), encoding="utf-8")
+    return verdicts
+
+
+def apply_verdicts(plan: dict, verdicts: list) -> dict:
+    """A panel its picture contradicts is drawn as what the picture shows, with no caption. Captions about
+    whistles, fouls or calls are dropped: sound and rulings are not in the frames."""
+    panels = _panels(plan)
+    for panel, v in zip(panels, verdicts):
+        if _rejected(v):
+            panel.update(description=str(v["seen"]).strip(), caption="", sfx="", verified="replaced")
+    for panel in panels:
+        for field in ("caption", "sfx"):
+            if UNSEEN.search(str(panel.get(field) or "")):
+                panel[field] = ""
+    return plan
 
 
 def _context(facts: dict) -> dict:
@@ -439,7 +556,7 @@ def panel_prompt(panel: dict, style: str, aspect: str, cast: dict | None = None,
     if technique:
         lines.append(f"Image {n} is a small crop that shows ONLY the drawing technique to use; copy nothing from it "
                      "(no people, no place, no layout).")
-    lines += [f"In this panel: {panel['description']}",
+    lines += [f"In this panel: {panel['description']} If this description and image 1 disagree, image 1 wins.",
               "Remove any broadcast score bar and on-screen graphics. Draw banners, signs and walls as plain shapes "
               "with no writing. No text, letters, logos or numbers anywhere except numbers on clothes; no speech "
               "bubbles, no sound effects.",
@@ -615,7 +732,7 @@ def panel_jobs(plan: dict, video: Path, work: Path) -> list[dict]:
                 t = float(panel.get("t") or 0)
                 full = Image.open(still(video, t, work / "src" / f"t_{t:.2f}.jpg", plan.get("overlays"))).convert("RGB")
                 pic = crop(full, panel.get("box"), _ratio(aspect),
-                           min_frac={"close-up": 0.22, "medium": 0.35}.get(panel.get("shot"), 0.6))
+                           min_frac={"close-up": 0.3, "medium": 0.45}.get(panel.get("shot"), 0.7))
                 if pic.width < 1024:
                     pic = pic.resize((1024, int(1024 * pic.height / pic.width)), Image.LANCZOS)
                 pic.save(source, quality=92)
