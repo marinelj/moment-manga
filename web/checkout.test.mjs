@@ -9,7 +9,8 @@ const server='https://marine-api.tunnel.tungo.cn/manga';
 const api=server+'/api/';
 const token='test-buyer+/=token';
 function storage(map=new Map(), blocked=false) {
-  return {map,getItem(k){if(blocked)throw Error('Storage blocked');return map.get(k)??null},
+  return {map,get length(){if(blocked)throw Error('Storage blocked');return map.size},key(i){if(blocked)throw Error('Storage blocked');return [...map.keys()][i]??null},
+    getItem(k){if(blocked)throw Error('Storage blocked');return map.get(k)??null},
     setItem(k,v){if(blocked)throw Error('Storage blocked');map.set(k,String(v))},
     removeItem(k){if(blocked)throw Error('Storage blocked');map.delete(k)}};
 }
@@ -52,7 +53,7 @@ for(const zh of [false,true])test(`${zh?'Chinese':'English'} Pages checkout pers
   const post=p.calls.find(c=>c.opts.method==='POST');assert.equal(post.url,api+'orders');
   assert.deepEqual([...post.opts.body.keys()],['video','product','lang']);
   assert.equal(post.opts.body.get('lang'),zh?'zh':'en');assert.equal(post.opts.body.get('product'),zh?'all':'book');
-  assert.equal(p.local.map.get('momentBuyerToken:'+api+':test-order'),token);
+  assert.equal(p.local.map.size,0,'nothing about the order outlives this tab');assert.equal(JSON.parse(p.session.map.get('momentOrder')).buyer_token,token);
   const pay=new URL(p.get('paymentLink').href);assert.equal(pay.origin+pay.pathname,api+'orders/test-order/pay');assert.equal(pay.searchParams.get('t'),token);
   assert.equal(p.calls.at(-1).opts.headers['X-Buyer-Token'],token);
   p.setStatus('done');await p.poll();assert.equal(p.get('checkout').dataset.state,'done');
@@ -97,7 +98,7 @@ for(const zh of [false,true])test(`${zh?'Chinese':'English'} batch order: wait n
   const link=new URL(p.get('orderLinkInput').value);
   assert.equal(link.origin+link.pathname,'https://marinelj.github.io/moment-manga/'+(zh?'zh/':''));
   assert.equal(link.searchParams.get('order'),'test-order');assert.equal(link.searchParams.get('t'),token);
-  assert.equal(JSON.parse(p.local.map.get('momentOrder')).id,'test-order','the order survives closing the tab');
+  assert.equal(p.local.map.size,0,'the next visit in this browser must not reopen the order');
   p.setStatus('processing');await p.poll();
   assert.equal(p.get('progressNote').hidden,false);assert.match(p.get('progressNote').textContent,/24/);
   p.setStatus('done');await p.poll();
@@ -118,9 +119,27 @@ test('An order link opens that order on a fresh browser',async()=>{
   const p=await page({url:'https://marinelj.github.io/moment-manga/?order=test-order&t=link-token',status:'done',extra:{files_expire_at:1794816000}});
   const poll=p.calls.find(c=>c.url===api+'orders/test-order');assert.ok(poll,'polls the linked order');
   assert.equal(poll.opts.headers['X-Buyer-Token'],'link-token');
-  assert.equal(p.local.map.get('momentBuyerToken:'+api+':test-order'),'link-token');
+  assert.equal(p.local.map.size,0,'the link token stays out of localStorage');
   assert.equal(p.get('downloads').children.length,2);
   for(const a of p.get('downloads').children)assert.equal(new URL(a.href).searchParams.get('t'),'link-token');
+});
+
+test('A new visit shows no order or files, even after an order finished in this browser',async()=>{
+  const p=await page({status:'done'});await p.buy();await p.poll();assert.equal(p.get('checkout').dataset.state,'done');
+  const fresh=await page({local:p.local,status:'done'});
+  assert.deepEqual(fresh.calls.map(c=>c.url),[api+'config'],'no order is looked up');
+  assert.equal(fresh.get('checkout').dataset.state,undefined);assert.equal(fresh.get('orderLinkInput').value,undefined);assert.equal(fresh.get('downloads').children.length,0);
+});
+
+test('A new visit clears the order an older page left in localStorage and does not open it',async()=>{
+  const local=storage(new Map([['momentOrder',JSON.stringify({id:'test-order',product:'book',api})],['momentBuyerToken:'+api+':test-order',token],['unrelated','kept']]));
+  const p=await page({local,status:'done'});
+  assert.deepEqual(p.calls.map(c=>c.url),[api+'config'],'no order is looked up');
+  assert.equal(p.get('downloads').children.length,0);
+  assert.deepEqual([...local.map.keys()],['unrelated'],'old order and token removed, other keys untouched');
+  // A tab left open across the update holds an old-format record whose token was in localStorage: don't reopen it.
+  const stale=await page({session:storage(new Map([['momentOrder',JSON.stringify({id:'test-order',product:'book',api})]])),status:'done'});
+  assert.deepEqual(stale.calls.map(c=>c.url),[api+'config']);
 });
 
 test('Expired files show that they were deleted and offer no downloads',async()=>{
