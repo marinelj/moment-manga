@@ -52,6 +52,7 @@ DIRECTOR_MAX_TOKENS = int(env("DIRECTOR_MAX_TOKENS", "64000"))                # 
 DIRECTOR_PRICE_IN = float(env("DIRECTOR_PRICE_IN", "8"))
 DIRECTOR_PRICE_OUT = float(env("DIRECTOR_PRICE_OUT", "40"))
 DIRECTOR_LOCATE_FPS = float(env("DIRECTOR_LOCATE_FPS", "2"))                  # whole frames for the first pass
+DIRECTOR_LOCATE_PX = int(env("DIRECTOR_LOCATE_PX", "1280"))                   # their width: at 640 the far play is lost
 DIRECTOR_ZOOM_FPS = float(env("DIRECTOR_ZOOM_FPS", "10"))                     # zoom frames; fast moves last 0.3 s
 DIRECTOR_MAX_FRAMES = int(env("DIRECTOR_MAX_FRAMES", "100"))                  # longer clips get fewer a second
 DIRECTOR_ZOOM_FRAC = float(env("DIRECTOR_ZOOM_FRAC", "0.34"))                 # a zoom frame is at least this wide

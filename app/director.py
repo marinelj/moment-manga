@@ -75,7 +75,12 @@ is decided there, from the zooms, so don't spend effort on it here.
 score changes during the clip; "" if there is none.
 - overlays: boxes around graphics drawn on top of the picture (score bar, channel logo, captions).
 - track: for every frame, its time and one box around the main play at that time: the player with the ball and \
-the opponents and team-mates within reach. While a shot or a pass is in the air, stretch the box so the ball and \
+the opponents and team-mates within reach. Work backwards. First find the decisive moment (usually a shot at a \
+basket) and the person who makes it: that is the lead. Then follow the lead and the ball through every earlier \
+and later frame. The camera is usually far away, so the play is often among the smallest, most distant figures, \
+while larger players near the camera only stand and watch: never box people because they are large or clear, box \
+where the ball is. Before the lead has the ball, box whoever has it; if the ball cannot be found in a frame, box \
+the lead and the people crowding the lead. While a shot or a pass is in the air, stretch the box so the ball and \
 its target are inside. The next pass sees only what is inside these boxes plus a margin, so keep the play inside.
 - hoop: one box around the basket (backboard and rim) that the play attacks, or [] if there is none.
 
@@ -115,7 +120,11 @@ Step 4, the book: {tone}. Plan 3 or 4 pages. A page is rows from top to bottom. 
 "short" and holds one cell (a wide panel; write "even" for its split) or two cells side by side (split "even", \
 "left-wide" or "right-wide"). A cell holds one panel, or two panels stacked. Three to five panels a page, 9 to 14 \
 in the book. A single panel in a tall row beside a stack of two makes a strong page: the big vertical moment with \
-two quick beats next to it. Give the opening view a wide panel, the decisive move and the finish the biggest \
+two quick beats next to it. Re-stage every moment; do not describe the frame as it was filmed. At most one panel \
+in the book is a wide view of the court. Every other art panel is a close or medium shot built around one or two \
+people, usually the lead and the nearest opponent, from an angle the far camera never had (low from the floor, \
+over a defender's shoulder, from under the basket, tight on the hands and the ball), and it leaves out everyone \
+who only stands and watches. Give the opening view a wide panel, the decisive move and the finish the biggest \
 panels, and quick beats (eyes, feet, the ball on the glass, the net) the small ones. Tell only the events of \
 step 2, in order, and end where the clip ends. If the result of the shot is unclear, end with the ball in the air.
 
@@ -135,8 +144,10 @@ When the direction of travel matters, say which way the lead moves and which par
 Call the lead "the lead" and give the number too. Name every number that may appear, because otherwise the \
 illustrator repeats numbers and gives the lead's shoes to other players. Ask for no writing in the picture, and \
 use no nicknames and no team names.
-- caption: narration in {lang}, at most 60 characters, or "". It says what the picture shows or what the on-screen \
-text states (league, score) and invents nothing. Not every panel needs one.
+- caption: narration in {lang}, at most 60 characters, or "". It tells the event with a pulse, the way a sports \
+manga narrates ("Trapped.", "One dribble. Gone.", "Off the glass..."), not as a description of the picture; two \
+to six words work best. It may also give what the on-screen text states (league, score). It invents nothing. Not \
+every panel needs one.
 - sfx: one short sound-effect word in {lang}, or "". Never a whistle, a foul or a call.
 
 Boxes are [ymin, xmin, ymax, xmax] on a 0-1000 scale of the zoom frame they belong to. The lettering is added \
@@ -469,7 +480,7 @@ def locate(dc, oid: str | None, frames: list[tuple[float, object]], dur: float, 
     """Where the play is over time. frames: (time, picture) of whole frames."""
     content = [text(LOCATE_PROMPT.format(n=len(frames), dur=dur))]
     for t, frame in frames:
-        content += [text(f"Frame at t = {t:.2f} s:"), image(frame, 640)]
+        content += [text(f"Frame at t = {t:.2f} s:"), image(frame, settings.DIRECTOR_LOCATE_PX)]
     return ask(dc, oid, "director (locate)", content, LOCATE_SCHEMA, settings.DIRECTOR_LOCATE_EFFORT, sleep)
 
 
