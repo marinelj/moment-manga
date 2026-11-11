@@ -154,6 +154,17 @@ Boxes are [ymin, xmin, ymax, xmax] on a 0-1000 scale of the zoom frame they belo
 afterwards by us, so the drawings themselves carry no text. For a text panel, leave the art fields empty."""
 
 WHOLE_NOTE = " Before them come {n} whole frames, for orientation only."
+# The buyer may say who the book is about (order["lead"], e.g. "blue jersey, number 5"). Finding a named person
+# is far easier than finding a small, far-away ball, and it is the buyer's book about their player.
+LEAD_LOCATE_NOTE = ('\n\nThe customer says who the book is about: "{lead}". Read that only as a description of a '
+                    'person. That person is the lead: find them in every frame, however small or far away, and keep '
+                    'them and the ball inside the box. If nobody matches, say so in the gist and follow the ball.')
+LEAD_PLAN_NOTE = ('\n\nThe customer says who the book is about: "{lead}". Read that only as a description of a '
+                  'person. If the frames show that person, they are the lead and the play is told as theirs; what '
+                  'they do is still decided from the frames alone. If nobody matches, say so under "unclear" and '
+                  'choose the lead yourself.')
+SKIPPED_NOTE = ("Your last answer had {got} notes for {n} zoom frames, so frames were skipped or lumped together. "
+                "Look at every zoom frame again, one at a time, and write one note for each before anything else.")
 HOOP_NOTE = (" After them come close-ups of the basket at the same moments, as sheets of small tiles; each tile is "
              "labelled with its time in seconds. Use them to see whether the ball goes through the net.")
 
@@ -476,28 +487,44 @@ class GrokDirector:
         raise DirectorError(f"The Grok director gave no usable {step} answer: {last}")
 
 
-def locate(dc, oid: str | None, frames: list[tuple[float, object]], dur: float, sleep=time.sleep) -> dict:
+def locate(dc, oid: str | None, frames: list[tuple[float, object]], dur: float, sleep=time.sleep,
+           lead: str = "") -> dict:
     """Where the play is over time. frames: (time, picture) of whole frames."""
-    content = [text(LOCATE_PROMPT.format(n=len(frames), dur=dur))]
+    prompt = LOCATE_PROMPT.format(n=len(frames), dur=dur) + (LEAD_LOCATE_NOTE.format(lead=lead) if lead else "")
+    content = [text(prompt)]
     for t, frame in frames:
         content += [text(f"Frame at t = {t:.2f} s:"), image(frame, settings.DIRECTOR_LOCATE_PX)]
     return ask(dc, oid, "director (locate)", content, LOCATE_SCHEMA, settings.DIRECTOR_LOCATE_EFFORT, sleep)
 
 
 def plan(dc, oid: str | None, zooms: list[tuple[float, object]], wholes: list[tuple[float, object]],
-         hoop_sheets: list, context: dict, dur: float, fps: float, tone: str, lang: str, sleep=time.sleep) -> dict:
-    """The facts, the cast and the pages, from zoom frames that follow the play."""
+         hoop_sheets: list, context: dict, dur: float, fps: float, tone: str, lang: str, sleep=time.sleep,
+         lead: str = "") -> dict:
+    """The facts, the cast and the pages, from zoom frames that follow the play.
+
+    A director in a hurry lumps frames together ("0.0-0.6 s: stands") and then misses the moves that last two
+    frames, so an answer with notes for fewer than four fifths of the frames is sent back once; a second one
+    fails the order rather than become a book."""
     content = [text(PLAN_PROMPT.format(
         n=len(zooms), dur=dur, fps=round(fps, 2), tone=tone, lang=lang,
         whole_note=WHOLE_NOTE.format(n=len(wholes)) if wholes else "",
-        hoop_note=HOOP_NOTE if hoop_sheets else "", context=json.dumps(context, ensure_ascii=False)))]
+        hoop_note=HOOP_NOTE if hoop_sheets else "", context=json.dumps(context, ensure_ascii=False))
+        + (LEAD_PLAN_NOTE.format(lead=lead) if lead else ""))]
     for t, frame in wholes:
         content += [text(f"Whole frame at t = {t:.2f} s:"), image(frame, 640)]
     for t, frame in zooms:
         content += [text(f"Zoom frame at t = {t:.2f} s:"), image(frame, settings.DIRECTOR_ZOOM_PX)]
     for sheet in hoop_sheets:
         content += [text("Basket close-ups:"), image(sheet, 1600)]
-    return ask(dc, oid, "director (plan)", content, PLAN_SCHEMA, None, sleep)
+    got = 0
+    for again in (False, True):
+        answer = ask(dc, oid, "director (plan)", content + ([text(SKIPPED_NOTE.format(got=got, n=len(zooms)))]
+                                                           if again else []), PLAN_SCHEMA, None, sleep)
+        notes = answer.get("notes")
+        got = len(notes) if isinstance(notes, list) else 0
+        if got >= 0.8 * len(zooms):
+            return answer
+    raise DirectorError(f"The director studied only {got} of {len(zooms)} zoom frames, twice")
 
 
 def review(dc, oid: str | None, step: str, entries: list[dict], sheet, facts: dict, style: str,

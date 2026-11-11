@@ -30,7 +30,7 @@ for column, kind in (
     ("alipay_trade_no", "TEXT"), ("paid_at", "REAL"), ("photo", "TEXT"),
     ("last_query_at", "REAL"), ("video_result", "TEXT"), ("generation", "TEXT"), ("api_style", "TEXT"),
     ("email", "TEXT"), ("notify_token", "TEXT"), ("done_at", "REAL"), ("notified_at", "REAL"),
-    ("files_deleted_at", "REAL"),
+    ("files_deleted_at", "REAL"), ("lead", "TEXT"),
 ):
     try:
         _conn.execute(f"ALTER TABLE orders ADD COLUMN {column} {kind}")

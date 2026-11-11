@@ -51,3 +51,5 @@ Administrative query, refund, refund query, and close endpoints are under `/api/
 ## Remaining product work
 
 Selling `all` needs an approved CNY price in `ALIPAY_ALL_CENTS`, a higher Gemini spend-rate limit (the default limit throttles at about $10 per hour, which is 3 to 4 videos), and a reviewed sample. Production sales also require merchant approval, public HTTPS notification testing, and a real small-payment/refund check. See [Alipay setup](ALIPAY_WEB.md).
+
+Since 2026-11-11 `POST /api/orders` also accepts the optional form field `lead`: who the book is about, in the buyer's words (for example `blue jersey, number 5`). Whitespace is collapsed and the text is kept to 80 characters. The book's director looks for that person first. Leaving it out changes nothing.

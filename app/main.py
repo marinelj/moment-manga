@@ -109,7 +109,8 @@ def config():
 @app.post("/api/orders")
 async def create_order(video: UploadFile = File(...), theme: str | None = Form(None),
                        style: str | None = Form(None), photo: UploadFile | None = File(None),
-                       product: str | None = Form(None), lang: str = Form("en"), email: str | None = Form(None)):
+                       product: str | None = Form(None), lang: str = Form("en"), email: str | None = Form(None),
+                       lead: str | None = Form(None)):
     webpay = settings.PAYMENT_PROVIDER == "alipay_web"
     email = (email or "").strip() or None
     if email and (len(email) > 254 or not EMAIL.fullmatch(email)):
@@ -170,6 +171,11 @@ async def create_order(video: UploadFile = File(...), theme: str | None = Form(N
         order = db.create(theme, style, "", lang)
         # Fixed for the order's lifetime, whatever the admin page says later.
         db.update(order["id"], generation=modes.current(), api_style=modes.api_style())
+        # Optional: who the book is about, in the buyer's words ("blue jersey, number 5"). The director looks for
+        # that person first; it is only ever read as a description.
+        who = " ".join((lead or "").split())[:80]
+        if who:
+            db.update(order["id"], lead=who)
         path = uploads / f"{order['id']}{Path(video.filename or '').suffix.lower() or '.mp4'}"
         shutil.move(tmp, path)
         photo_path = None

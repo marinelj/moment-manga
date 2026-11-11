@@ -66,7 +66,7 @@ class FakeGateway:
         if "These 1 frames" in task or "show the whole picture of the clip" in task:
             return LOCATE
         if "Now the close study" in task:
-            return PLAN
+            return dict(PLAN, notes=["a note"] * task.count("Zoom frame at t = "))
         flags = self.reviews.pop(0) if self.reviews else {}
         return {"panels": [verdict(pid, **flags.get(pid, {})) for pid in re.findall(r"Panel (D\d+-\d+)\.", task)]}
 
