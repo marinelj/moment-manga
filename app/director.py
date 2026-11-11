@@ -13,16 +13,24 @@ Three kinds of call, all answered as JSON that follows a schema:
   review  the drawings next to their directions and references: ok, edit or redraw, and where the lettering goes.
 
 ANTHROPIC_API_KEY, DIRECTOR_MODEL and DIRECTOR_EFFORT come from the environment (see settings.py).
+
+The same three questions can go to the Grok bot instead (BOOK_DIRECTOR=grok or the admin page's choice): see
+GrokDirector below. The prompts, the schemas and everything in directed.py stay the same; only the way a question
+travels differs.
 """
 import base64
 import json
+import secrets
+import shutil
 import time
+import uuid
+import zipfile
 from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
 
-from . import db, settings
+from . import db, modes, settings
 
 # Server-side refusal fallback: if a safety classifier declines a request, Anthropic re-runs it on the model
 # it recommends for that case inside the same call, instead of the order failing on a false positive.
@@ -214,11 +222,23 @@ REVIEW_SCHEMA = _obj(panels=_list(_obj(
     sfx_colour={"type": "string", "enum": ["white", "yellow"]})))
 
 
+def provider() -> str | None:
+    """Who directs a real book now: "claude", "grok", or None for the Gemini-only book. A director that was
+    chosen by name but is not set up still counts: its orders fail with the reason instead of quietly getting
+    the Gemini-only book."""
+    choice = modes.book_director()
+    if choice in ("claude", "grok"):
+        return choice
+    return "claude" if choice == "auto" and settings.ANTHROPIC_API_KEY else None
+
+
 def enabled() -> bool:
-    return bool(settings.ANTHROPIC_API_KEY) and settings.BOOK_DIRECTOR != "off"
+    return provider() is not None
 
 
 def client():
+    if provider() == "grok":
+        return GrokDirector()
     import anthropic
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
@@ -272,6 +292,8 @@ def ask(dc, oid: str | None, step: str, content: list, schema: dict, effort: str
     Two request features may be unavailable to an account or a model: the answer schema and the refusal
     fallback. If the API rejects the request naming one of them, the call goes again without it: the schema
     then travels in the prompt, and a refusal then fails the order."""
+    if isinstance(dc, GrokDirector):
+        return dc.ask(oid, step, content, schema, sleep)
     import anthropic
     strict, fallback, last = True, True, None
     for attempt in range(5):
@@ -320,6 +342,127 @@ def ask(dc, oid: str | None, step: str, content: list, schema: dict, effort: str
             return data
         last = ValueError("not a JSON object")
     raise DirectorError(f"The director gave no usable {step} answer: {last}")
+
+
+GROK_TASK = """# Your role
+
+{system}
+
+# How to work
+
+This folder holds {n} pictures, 001.jpg to {last}. In the task below a line such as "[picture 007.jpg]" stands \
+for that picture, and the words just before it say what it is.
+
+Open every picture and look at it with your own eyes, in the order given. Never judge a picture from its file \
+name, from a script or from a guess, and skip none: the task is about small differences between neighbouring \
+pictures. With many pictures, write short notes to a file as you go, so that nothing is lost by the time you \
+write the answer.
+
+# The task
+
+{body}
+
+# Your answer
+
+Reply with one JSON object and nothing else: no words before or after it and no code fence. It must follow this \
+JSON schema, with every field present:
+
+{schema}
+"""
+GROK_PROMPT = ("From the Moment Manga backend, on behalf of its owner. You are the director of a manga book made "
+               "from a customer's video clip. Download {url} (a zip, {mb:.1f} MB), unzip it, read task.md and do "
+               "exactly what it says: look at every picture yourself, then reply with only the JSON object it asks "
+               "for. The link is private and stops working when you have answered.")
+
+
+def bundle(content: list, schema: dict) -> tuple[Path, str]:
+    """One question as a folder the Grok bot can download: the pictures and task.md in bundle.zip, under a name
+    nobody can guess. Returns the folder and the zip's public address."""
+    folder = settings.DIRECTOR_BUNDLE_DIR / secrets.token_urlsafe(24)
+    folder.mkdir(parents=True)
+    lines, n = [], 0
+    with zipfile.ZipFile(folder / "bundle.zip", "w", zipfile.ZIP_STORED) as archive:   # JPEGs don't compress
+        for block in content:
+            if block.get("type") == "image":
+                n += 1
+                archive.writestr(f"{n:03d}.jpg", base64.standard_b64decode(block["source"]["data"]))
+                lines.append(f"[picture {n:03d}.jpg]")
+            else:
+                lines.append(block["text"])
+        archive.writestr("task.md", GROK_TASK.format(system=SYSTEM, n=n, last=f"{n:03d}.jpg",
+                                                     body="\n\n".join(lines), schema=json.dumps(schema, indent=1)))
+    return folder, f"{settings.DIRECTOR_BUNDLE_URL}/{folder.name}/bundle.zip"
+
+
+class GrokDirector:
+    """The Grok bot as the director, through its HTTP gateway (POST /v1/runs, then GET /v1/runs/{id} until the
+    run ends). The gateway takes words only, so each question's pictures wait in a bundle the bot downloads;
+    the bundle is deleted as soon as the question is settled. The bot runs on the owner's Grok plan: a call has
+    no metered price, so the ledger records it at $0.
+
+    A run that the gateway could not hand to the bot, or an answer that is not the JSON asked for, goes again.
+    A run that hit the gateway's 30 minute limit does not: the same question would only time out again."""
+    POLL = 10
+
+    def __init__(self, http=None):
+        if not settings.GROK_DIRECTOR_URL:
+            raise RuntimeError("GROK_DIRECTOR_URL is not set")
+        if http is None:
+            import httpx
+            http = httpx.Client(timeout=60)
+        self.http = http
+
+    def _run(self, prompt: str, step: str, sleep) -> str:
+        base = settings.GROK_DIRECTOR_URL
+        sent = self.http.post(f"{base}/v1/runs", json={"prompt": prompt},
+                              headers={"Idempotency-Key": uuid.uuid4().hex})
+        sent.raise_for_status()
+        run = sent.json()["run_id"]
+        state: dict = {}
+        for _ in range(max(1, settings.GROK_DIRECTOR_TIMEOUT // self.POLL)):
+            sleep(self.POLL)
+            try:
+                state = self.http.get(f"{base}/v1/runs/{run}").json()
+            except Exception:                    # a dropped poll is not the run's failure; ask again
+                continue
+            if state.get("status") == "completed":
+                return str(state.get("final_output") or "")
+            if state.get("status") == "timed_out":
+                raise DirectorError(f"The Grok director ran out of time on the {step} question")
+            if state.get("status") == "failed":
+                raise RuntimeError(str(state.get("error") or "the run failed"))
+        raise DirectorError(f"The Grok director did not answer the {step} question in "
+                            f"{settings.GROK_DIRECTOR_TIMEOUT} s")
+
+    def ask(self, oid: str | None, step: str, content: list, schema: dict, sleep=time.sleep) -> dict:
+        folder, url = bundle(content, schema)
+        prompt = GROK_PROMPT.format(url=url, mb=(folder / "bundle.zip").stat().st_size / 1e6)
+        last = None
+        try:
+            for attempt in range(max(1, settings.GROK_DIRECTOR_TRIES)):
+                try:
+                    answer = self._run(prompt, step, sleep)
+                except DirectorError:
+                    raise
+                except Exception as exc:         # not delivered, or the gateway is unreachable for a moment
+                    last = exc
+                    sleep(5 * 2 ** attempt)
+                    continue
+                if oid:
+                    db.add_cost(oid, step, "grok-bot", 0, 0.0)
+                try:
+                    data = _json(answer)
+                except ValueError as exc:
+                    last = exc
+                    continue
+                missing = ([k for k in schema.get("required", []) if k not in data] if isinstance(data, dict)
+                           else ["a JSON object"])
+                if not missing:
+                    return data
+                last = ValueError(f"the answer lacks {', '.join(missing)}")
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+        raise DirectorError(f"The Grok director gave no usable {step} answer: {last}")
 
 
 def locate(dc, oid: str | None, frames: list[tuple[float, object]], dur: float, sleep=time.sleep) -> dict:

@@ -371,6 +371,10 @@ class ApiStyleChoice(BaseModel):
     style: str | None    # "standard", "batch", or null to go back to the GEMINI_API_STYLE setting
 
 
+class DirectorChoice(BaseModel):
+    director: str | None    # "auto", "claude", "grok", "off", or null to go back to the BOOK_DIRECTOR setting
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page():
     """Debug page: no token. Anyone with the address can switch mocked/real Gemini."""
@@ -389,9 +393,14 @@ def admin_status(request: Request):
             "api_style_source": "admin page" if style_override else "GEMINI_API_STYLE setting",
             "batch_max_wait_hours": settings.BATCH_MAX_WAIT_HOURS,
             "checkout_ready": checkout_ready(), "gemini_key_set": bool(settings.GEMINI_API_KEY),
-            # Who plans and checks a real book: "claude" (directed book) while ANTHROPIC_API_KEY is set.
-            "book_director": "claude" if director.enabled() else "gemini",
-            "director_model": settings.DIRECTOR_MODEL, "anthropic_key_set": bool(settings.ANTHROPIC_API_KEY),
+            # Who plans and checks a real book: "claude" or "grok" (directed book), else "gemini" (the older
+            # Gemini-only book). book_director_choice is the switch behind it: auto, claude, grok or off.
+            "book_director": director.provider() or "gemini",
+            "book_director_choice": modes.book_director(),
+            "book_director_source": "admin page" if db.get_setting(modes.DIRECTOR_KEY) else "BOOK_DIRECTOR setting",
+            "director_model": "grok-bot" if director.provider() == "grok" else settings.DIRECTOR_MODEL,
+            "anthropic_key_set": bool(settings.ANTHROPIC_API_KEY),
+            "grok_director_url_set": bool(settings.GROK_DIRECTOR_URL),
             "production_payment_test_allowed": settings.ALLOW_PRODUCTION_PAYMENT_TEST,
             "prices": dict(getattr(provider, "prices", {})),
             "orders": db.recent_orders(20)}
@@ -415,6 +424,27 @@ def admin_set_api_style(body: ApiStyleChoice, request: Request):
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"api_style": modes.api_style()}
+
+
+@app.post("/api/admin/book-director")
+def admin_set_book_director(body: DirectorChoice, request: Request):
+    _require_debug()
+    try:
+        modes.set_book_director(body.director)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"book_director": director.provider() or "gemini", "book_director_choice": modes.book_director()}
+
+
+@app.get("/api/director/bundles/{token}/bundle.zip")
+def director_bundle(token: str):
+    """The pictures of one question to a director that cannot be sent pictures (director.GrokDirector). The
+    token is the only key: 32 random characters that exist only while that question is open."""
+    path = settings.DIRECTOR_BUNDLE_DIR / token / "bundle.zip"
+    if not re.fullmatch(r"[A-Za-z0-9_-]{24,64}", token) or not path.is_file():
+        raise HTTPException(404, "Not found")
+    return FileResponse(path, media_type="application/zip",
+                        headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
 
 @app.get("/api/admin/orders/{oid}/costs")

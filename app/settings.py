@@ -28,11 +28,22 @@ STORY_FPS = float(env("STORY_FPS", "4"))
 STORY_MAX_FRAMES = int(env("STORY_MAX_FRAMES", "60"))
 # Book check-and-fix: at most this many panels per book get one fix (an image edit or a redraw, $0.14 each).
 BOOK_MAX_FIXES = int(env("BOOK_MAX_FIXES", "4"))
-# The directed book (app/directed.py): Claude studies the frames, directs every panel and reviews every drawing;
-# Gemini draws. It runs for every real book order while ANTHROPIC_API_KEY is set, unless BOOK_DIRECTOR=off;
-# without a key, orders get the Gemini-only book above.
+# The directed book (app/directed.py): a director studies the frames, directs every panel and reviews every
+# drawing; Gemini draws. Who directs is BOOK_DIRECTOR, or the admin page's choice (app/modes.py):
+#   auto    Claude while ANTHROPIC_API_KEY is set, otherwise the Gemini-only book above
+#   claude  Claude through the Anthropic API (an order fails without the key)
+#   grok    the Grok bot behind GROK_DIRECTOR_URL (see director.GrokDirector)
+#   off     always the Gemini-only book
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
-BOOK_DIRECTOR = (env("BOOK_DIRECTOR") or "auto").strip().lower()             # auto | off
+BOOK_DIRECTOR = (env("BOOK_DIRECTOR") or "auto").strip().lower()
+# The Grok bot's HTTP gateway, e.g. https://host/grokbot. It takes words only, so the pictures of each question
+# wait in a folder under DIRECTOR_BUNDLE_DIR that the bot downloads from DIRECTOR_BUNDLE_URL/<token>/bundle.zip
+# (served by this app at /api/director/bundles/); the folder is deleted when the answer is in.
+GROK_DIRECTOR_URL = (env("GROK_DIRECTOR_URL") or "").rstrip("/")
+GROK_DIRECTOR_TIMEOUT = int(env("GROK_DIRECTOR_TIMEOUT", "1800"))            # seconds; the gateway ends a run at 30 min
+GROK_DIRECTOR_TRIES = int(env("GROK_DIRECTOR_TRIES", "3"))                    # a lost delivery or a broken answer
+DIRECTOR_BUNDLE_DIR = Path(env("DIRECTOR_BUNDLE_DIR", str(DATA_DIR / "director_bundles"))).resolve()
+DIRECTOR_BUNDLE_URL = (env("DIRECTOR_BUNDLE_URL") or PUBLIC_URL + "/api/director/bundles").rstrip("/")
 DIRECTOR_MODEL = env("DIRECTOR_MODEL", "claude-fable-5-2")
 DIRECTOR_EFFORT = env("DIRECTOR_EFFORT", "high")                              # low | medium | high | xhigh | max
 DIRECTOR_LOCATE_EFFORT = env("DIRECTOR_LOCATE_EFFORT", "medium")              # the first pass only finds the play
