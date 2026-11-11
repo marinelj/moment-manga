@@ -22,6 +22,9 @@ that follows the lead, with a character sheet and a check-and-fix pass. This pip
 The facts, the plan, the sheet, every finished panel and every check are saved in the order's folder, and
 so is the batch job's name. A restarted order reuses them, so it doesn't pay for the same call twice.
 
+While ANTHROPIC_API_KEY is set, run() hands the order to the directed book instead (app/directed.py): Claude
+studies the frames, directs and reviews, and this module's drawing, batch and frame helpers do the Gemini work.
+
 GEMINI_API_KEY is read from the environment (see settings.py).
 """
 import base64
@@ -79,6 +82,7 @@ STORYBOARD_PRICE_IN, STORYBOARD_PRICE_OUT = 0.75 / 1e6, 3.75 / 1e6
 CHECK_PRICE_IN, CHECK_PRICE_OUT = clips.CHECK_PRICE_IN, clips.CHECK_PRICE_OUT
 BATCH_DONE = {"JOB_STATE_SUCCEEDED", "JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"}
 PHOTO_NOTE = "The last image is a portrait of the lead: keep the lead's face and hair consistent with it."
+DIRECTED_PX = 1600      # longest side of the pictures sent with a directed panel (reference crop, character sheet)
 
 FACTS_PROMPT = """These {n} frames come from one short video, in order; frame k is at t = k/{fps:g} seconds ({dur:.1f} s in all).
 Before anyone draws a manga from it, write down the facts. Report only what the frames show. Where something is too
@@ -564,10 +568,10 @@ def panel_prompt(panel: dict, style: str, aspect: str, cast: dict | None = None,
     return " ".join(lines)
 
 
-def _image_config(aspect: str):
+def _image_config(aspect: str, size: str | None = None):
     from google.genai import types
-    return types.GenerateContentConfig(response_modalities=["IMAGE"],
-                                       image_config=types.ImageConfig(aspect_ratio=aspect))
+    shape = types.ImageConfig(aspect_ratio=aspect, image_size=size) if size else types.ImageConfig(aspect_ratio=aspect)
+    return types.GenerateContentConfig(response_modalities=["IMAGE"], image_config=shape)
 
 
 def _image_from(r) -> Image.Image:
@@ -578,10 +582,11 @@ def _image_from(r) -> Image.Image:
     raise RuntimeError("Image model returned no image")
 
 
-def _image_call(client, contents: list, aspect: str, sleep=time.sleep) -> Image.Image:
+def _image_call(client, contents: list, aspect: str, sleep=time.sleep, size: str | None = None) -> Image.Image:
     last = None
     for _ in range(2):                         # the model sometimes answers with text only
-        r = clips._retry(lambda: _generate(client, settings.GEMINI_IMAGE_MODEL, contents, _image_config(aspect)), sleep)
+        r = clips._retry(lambda: _generate(client, settings.GEMINI_IMAGE_MODEL, contents,
+                                           _image_config(aspect, size)), sleep)
         try:
             return _image_from(r)
         except RuntimeError as exc:
@@ -591,6 +596,8 @@ def _image_call(client, contents: list, aspect: str, sleep=time.sleep) -> Image.
 
 def panel_contents(job: dict, style: str, cast: dict, sheet: Path | None) -> list:
     """Images first (numbered in the prompt in this order), then the prompt."""
+    if job.get("prompt"):       # a directed panel brings its own pictures and words (app/directed.py)
+        return [_part(p, DIRECTED_PX) for p in job.get("images") or []] + [job["prompt"]]
     ref = _style_ref(style)
     images = [_part(job["src"])] + ([_part(sheet, 1024)] if sheet else []) + ([_part(ref)] if ref else [])
     return images + [panel_prompt(job["panel"], style, job["aspect"], cast, bool(sheet), bool(ref))]
@@ -603,7 +610,7 @@ def _style_ref(style: str) -> Path | None:
 
 
 def draw_panel(client, job: dict, style: str, cast: dict, sheet: Path | None, sleep=time.sleep) -> Image.Image:
-    return _image_call(client, panel_contents(job, style, cast, sheet), job["aspect"], sleep)
+    return _image_call(client, panel_contents(job, style, cast, sheet), job["aspect"], sleep, job.get("size"))
 
 
 def draw_sheet(client, order: dict, plan: dict, jobs: list[dict], photo: Path | None, work: Path,
@@ -681,6 +688,9 @@ def _ratio(aspect: str) -> float:
 # ---------- the order ----------
 
 def run(order: dict, progress=lambda p: None, client=None, sleep=time.sleep, now=time.time) -> Path:
+    from . import directed
+    if directed.enabled():      # ANTHROPIC_API_KEY is set: Claude directs and reviews, Gemini draws
+        return directed.run(order, progress, client, sleep, now)
     work = settings.DATA_DIR / "jobs" / order["id"]
     work.mkdir(parents=True, exist_ok=True)
     src = Path(order["video"])
@@ -856,14 +866,18 @@ def _submit_batch(client, order: dict, todo: list[dict], plan: dict, sheet: Path
     requests = work / "batch_requests.jsonl"
     with requests.open("w", encoding="utf-8") as f:
         for job in todo:
-            images = [_jpeg_b64(job["src"])] + shared
+            if job.get("prompt"):       # a directed panel: its own pictures and words, as in panel_contents
+                images, words = [_jpeg_b64(p, DIRECTED_PX) for p in job.get("images") or []], job["prompt"]
+            else:
+                images = [_jpeg_b64(job["src"])] + shared
+                words = panel_prompt(job["panel"], order["style"], job["aspect"], plan.get("cast") or {},
+                                     bool(sheet), bool(ref))
             parts = [{"inlineData": {"mimeType": "image/jpeg", "data": data}} for data in images]
-            parts.append({"text": panel_prompt(job["panel"], order["style"], job["aspect"], plan.get("cast") or {},
-                                               bool(sheet), bool(ref))})
+            parts.append({"text": words})
+            shape = {"aspectRatio": job["aspect"], **({"imageSize": job["size"]} if job.get("size") else {})}
             f.write(json.dumps({"key": job["key"], "request": {
                 "contents": [{"role": "user", "parts": parts}],
-                "generationConfig": {"responseModalities": ["IMAGE"],
-                                     "imageConfig": {"aspectRatio": job["aspect"]}}}}) + "\n")
+                "generationConfig": {"responseModalities": ["IMAGE"], "imageConfig": shape}}}) + "\n")
     name = f"mm-{order['id'][:12]}-panels"
     uploaded = client.files.upload(file=str(requests),
                                    config=types.UploadFileConfig(display_name=name, mime_type="jsonl"))

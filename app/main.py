@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
-from . import db, modes, notify, payments, settings, worker
+from . import db, director, modes, notify, payments, settings, worker
 
 THEMES = {"sports", "travel", "portrait", "comedy"}
 STYLES = {"miyazaki", "naruto", "slamdunk", "demonslayer", "onepiece"}
@@ -389,6 +389,9 @@ def admin_status(request: Request):
             "api_style_source": "admin page" if style_override else "GEMINI_API_STYLE setting",
             "batch_max_wait_hours": settings.BATCH_MAX_WAIT_HOURS,
             "checkout_ready": checkout_ready(), "gemini_key_set": bool(settings.GEMINI_API_KEY),
+            # Who plans and checks a real book: "claude" (directed book) while ANTHROPIC_API_KEY is set.
+            "book_director": "claude" if director.enabled() else "gemini",
+            "director_model": settings.DIRECTOR_MODEL, "anthropic_key_set": bool(settings.ANTHROPIC_API_KEY),
             "production_payment_test_allowed": settings.ALLOW_PRODUCTION_PAYMENT_TEST,
             "prices": dict(getattr(provider, "prices", {})),
             "orders": db.recent_orders(20)}
