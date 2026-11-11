@@ -304,3 +304,30 @@ def test_admin_status_says_who_directs_the_book(api, monkeypatch):
     status = client.get("/api/admin/status").json()
     assert status["book_director"] == "claude" and status["director_model"] == "claude-fable-5-2"
     assert "key" not in json.dumps(status["director_model"])
+
+
+def test_a_rejected_request_feature_is_dropped_and_the_call_goes_again(store):
+    import anthropic
+    import httpx2
+
+    class Picky(FakeDirector):
+        def _stream(self, **request):
+            reply = httpx2.Response(400, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"))
+            if "fallbacks" in request:
+                self.requests.append(request)
+                raise anthropic.BadRequestError("fallbacks: this model has no server-side fallback",
+                                                response=reply, body=None)
+            if "format" in request["output_config"]:
+                self.requests.append(request)
+                raise anthropic.BadRequestError("output_config.format: schema is too complex", response=reply,
+                                                body=None)
+            return super()._stream(**request)
+
+    fake = Picky()
+    answer = director.locate(fake, "order1", [(0.0, Image.new("RGB", (64, 36)))], 3.0)
+    assert answer["gist"] == "A drive to the basket." and len(fake.requests) == 3
+    last = fake.requests[-1]
+    assert "fallbacks" not in last and "betas" not in last and "format" not in last["output_config"]
+    assert "must follow this JSON schema" in last["messages"][0]["content"][-1]["text"]
+    assert director._json('```json\n{"a": 1}\n```') == {"a": 1}
+    assert len(ledger()) == 1                                    # only the call that reached the model is costed

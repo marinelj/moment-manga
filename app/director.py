@@ -258,21 +258,47 @@ def _cost(oid: str | None, step: str, message) -> None:
     db.add_cost(oid, step, model, tokens_in + tokens_out, (tokens_in * price_in + tokens_out * price_out) / 1e6)
 
 
+def _json(answer: str):
+    """The JSON object in an answer; without the schema feature the model may wrap it in a code fence."""
+    start, end = answer.find("{"), answer.rfind("}")
+    return json.loads(answer[start:end + 1] if 0 <= start < end else answer)
+
+
 def ask(dc, oid: str | None, step: str, content: list, schema: dict, effort: str | None = None,
         sleep=time.sleep) -> dict:
     """One question to the director, answered as JSON that follows `schema`. Streamed, because a long answer
-    behind a quiet connection gets cut on the way. Every attempt that reached the model is costed."""
+    behind a quiet connection gets cut on the way. Every attempt that reached the model is costed.
+
+    Two request features may be unavailable to an account or a model: the answer schema and the refusal
+    fallback. If the API rejects the request naming one of them, the call goes again without it: the schema
+    then travels in the prompt, and a refusal then fails the order."""
     import anthropic
-    last = None
-    for attempt in range(3):
+    strict, fallback, last = True, True, None
+    for attempt in range(5):
+        request = {"model": settings.DIRECTOR_MODEL, "max_tokens": settings.DIRECTOR_MAX_TOKENS, "system": SYSTEM,
+                   "output_config": {"effort": effort or settings.DIRECTOR_EFFORT},
+                   "messages": [{"role": "user", "content": content}]}
+        if strict:
+            request["output_config"]["format"] = {"type": "json_schema", "schema": schema}
+        else:
+            request["messages"][0]["content"] = content + [text(
+                "Answer with one JSON object and nothing else. It must follow this JSON schema:\n"
+                + json.dumps(schema))]
+        if fallback:
+            request.update(betas=[FALLBACK_BETA], fallbacks="default")
         try:
-            with dc.beta.messages.stream(
-                    model=settings.DIRECTOR_MODEL, max_tokens=settings.DIRECTOR_MAX_TOKENS, system=SYSTEM,
-                    betas=[FALLBACK_BETA], fallbacks="default",
-                    output_config={"effort": effort or settings.DIRECTOR_EFFORT,
-                                   "format": {"type": "json_schema", "schema": schema}},
-                    messages=[{"role": "user", "content": content}]) as stream:
+            with dc.beta.messages.stream(**request) as stream:
                 message = stream.get_final_message()
+        except anthropic.BadRequestError as exc:
+            words = str(exc).lower()
+            if fallback and "fallback" in words:
+                fallback = False
+            elif strict and any(w in words for w in ("schema", "output_config.format", "structured output")):
+                strict = False
+            else:
+                raise
+            last = exc
+            continue
         except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.InternalServerError) as exc:
             last = exc                 # the SDK already retried; wait longer and try the whole call again
             sleep(10 * 2 ** attempt)
@@ -286,7 +312,7 @@ def ask(dc, oid: str | None, step: str, content: list, schema: dict, effort: str
             raise DirectorError(f"The director's {step} answer was cut off at DIRECTOR_MAX_TOKENS")
         answer = "".join(block.text for block in message.content if getattr(block, "type", "") == "text")
         try:
-            data = json.loads(answer)
+            data = _json(answer)
         except ValueError as exc:
             last = exc
             continue
