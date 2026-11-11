@@ -245,3 +245,15 @@ def test_a_fix_that_stops_looking_like_manga_is_thrown_away(store):
     first_drawing = Image.open(keyframes[0]).getpixel((0, 0))
     assert first_drawing == (7, 7, 7)                         # the original drawing, not the fix (14)
     assert video.problems({"manga": False}) > video.problems({"text": True, "extra_people": True})
+
+
+def test_used_up_gemini_credit_fails_at_once_instead_of_waiting(monkeypatch):
+    waits = []
+
+    def refused():
+        raise ValueError("402 RESOURCE_EXHAUSTED. {'error': {'code': 402, 'message': 'Your prepayment credits are "
+                         "depleted.'}}")
+
+    with pytest.raises(RuntimeError, match="prepaid credits are used up"):
+        video._retry(refused, waits.append)
+    assert waits == []
