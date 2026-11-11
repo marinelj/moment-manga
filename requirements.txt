@@ -3,6 +3,7 @@ uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 pillow==11.1.0
 google-genai==2.34.0
+anthropic==2.8.0
 httpx==0.28.1
 opencv-python-headless==4.10.0.84
 # payment providers: only the one you use is imported

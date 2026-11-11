@@ -143,6 +143,11 @@ def _retry(fn, sleep, tries=4):
             return fn()
         except Exception as exc:  # the SDK raises several error classes; match on the message
             text = str(exc)
+            if text.startswith("402") or "credits are depleted" in text:
+                # Prepaid credit ran out (seen 2026-11-11). It comes as RESOURCE_EXHAUSTED like a rate limit, but
+                # waiting doesn't help: fail now with a message the owner can act on.
+                raise RuntimeError("Gemini refused the call: the account's prepaid credits are used up. Top up at "
+                                   "https://ai.studio/projects, then queue the order again.") from exc
             transient = any(code in text for code in ("429", "RESOURCE_EXHAUSTED", "500", "502", "503", "504",
                                                       "UNAVAILABLE", "DEADLINE", "disconnected",
                                                       "RemoteProtocolError", "ReadTimeout", "ReadError",

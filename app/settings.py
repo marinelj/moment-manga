@@ -28,6 +28,26 @@ STORY_FPS = float(env("STORY_FPS", "4"))
 STORY_MAX_FRAMES = int(env("STORY_MAX_FRAMES", "60"))
 # Book check-and-fix: at most this many panels per book get one fix (an image edit or a redraw, $0.14 each).
 BOOK_MAX_FIXES = int(env("BOOK_MAX_FIXES", "4"))
+# The directed book (app/directed.py): Claude studies the frames, directs every panel and reviews every drawing;
+# Gemini draws. It runs for every real book order while ANTHROPIC_API_KEY is set, unless BOOK_DIRECTOR=off;
+# without a key, orders get the Gemini-only book above.
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
+BOOK_DIRECTOR = (env("BOOK_DIRECTOR") or "auto").strip().lower()             # auto | off
+DIRECTOR_MODEL = env("DIRECTOR_MODEL", "claude-fable-5-2")
+DIRECTOR_EFFORT = env("DIRECTOR_EFFORT", "high")                              # low | medium | high | xhigh | max
+DIRECTOR_LOCATE_EFFORT = env("DIRECTOR_LOCATE_EFFORT", "medium")              # the first pass only finds the play
+DIRECTOR_MAX_TOKENS = int(env("DIRECTOR_MAX_TOKENS", "64000"))                # per answer, thinking included
+# USD per million tokens for a director model that app/director.py has no list price for.
+DIRECTOR_PRICE_IN = float(env("DIRECTOR_PRICE_IN", "8"))
+DIRECTOR_PRICE_OUT = float(env("DIRECTOR_PRICE_OUT", "40"))
+DIRECTOR_LOCATE_FPS = float(env("DIRECTOR_LOCATE_FPS", "2"))                  # whole frames for the first pass
+DIRECTOR_ZOOM_FPS = float(env("DIRECTOR_ZOOM_FPS", "10"))                     # zoom frames; fast moves last 0.3 s
+DIRECTOR_MAX_FRAMES = int(env("DIRECTOR_MAX_FRAMES", "100"))                  # longer clips get fewer a second
+DIRECTOR_ZOOM_FRAC = float(env("DIRECTOR_ZOOM_FRAC", "0.34"))                 # a zoom frame is at least this wide
+DIRECTOR_ZOOM_PX = int(env("DIRECTOR_ZOOM_PX", "1152"))                       # and is sent at most this wide
+DIRECTOR_FIX_ROUNDS = int(env("DIRECTOR_FIX_ROUNDS", "2"))                    # review, fix, review again
+DIRECTOR_MAX_FIXES = int(env("DIRECTOR_MAX_FIXES", "10"))                     # per book, $0.14 each
+BOOK_IMAGE_SIZE = env("BOOK_IMAGE_SIZE", "2K")                                # directed panels; 1K costs the same
 # Moving-manga video ("all" product): Nano Banana keyframes, Omni motion, cheap QA model
 VIDEO_IMAGE_MODEL = env("VIDEO_IMAGE_MODEL", "gemini-3.1-flash-image")
 VIDEO_CHECK_MODEL = env("VIDEO_CHECK_MODEL", "gemini-3.5-flash-lite")
