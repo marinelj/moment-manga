@@ -102,6 +102,7 @@ def study(dc, order: dict, video: Path, work: Path, sleep=time.sleep, progress=l
     dur, _, _ = clips.probe(video)
     oid = order["id"]
     lang = "Simplified Chinese" if order.get("lang") == "zh" else "English"
+    lead = " ".join(str(order.get("lead") or "").replace('"', "'").split())[:80]    # the buyer's words, kept short
 
     def frame(t: float, overlays=None) -> Image.Image:
         name = f"t_{t:.2f}.jpg" if overlays is not None else f"raw_{t:.2f}.jpg"
@@ -110,7 +111,7 @@ def study(dc, order: dict, video: Path, work: Path, sleep=time.sleep, progress=l
 
     def located() -> dict:
         times = _times(dur, min(settings.DIRECTOR_LOCATE_FPS, 40 / max(dur, 0.1)))
-        return director.locate(dc, oid, [(t, frame(t)) for t in times], dur, sleep)
+        return director.locate(dc, oid, [(t, frame(t)) for t in times], dur, sleep, lead)
 
     where = _saved(work / "locate.json", located)
     progress(5)
@@ -140,7 +141,7 @@ def study(dc, order: dict, video: Path, work: Path, sleep=time.sleep, progress=l
         return director.plan(dc, oid, zooms, wholes, _tile_sheets(tiles),
                              {"gist": where.get("gist") or "", "on_screen_text": where.get("on_screen_text") or ""},
                              dur, fps, pipeline.THEME_TONE.get(order.get("theme"), pipeline.THEME_TONE["sports"]),
-                             lang, sleep)
+                             lang, sleep, lead)
 
     raw = _saved(work / "director_plan.json", planned)
     return normalise(raw, where, times, rects, size, dur)

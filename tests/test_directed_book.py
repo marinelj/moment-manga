@@ -53,6 +53,7 @@ class FakeDirector:
 
     def __init__(self, reviews=(), plan=PLAN, stop_reason="end_turn", model="claude-fable-5-2"):
         self.reviews, self.plan, self.stop_reason, self.model = list(reviews), plan, stop_reason, model
+        self.notes = None             # set to a short list to play a director who lumps frames together
         self.requests = []
         self.beta = SimpleNamespace(messages=SimpleNamespace(stream=self._stream))
 
@@ -61,7 +62,8 @@ class FakeDirector:
         if prompt.startswith("These"):
             return LOCATE
         if prompt.startswith("Now the close study"):
-            return self.plan
+            frames = sum(b.get("text", "").startswith("Zoom frame at") for b in content)
+            return dict(self.plan, notes=self.notes or [f"{k} blue 5 has the ball" for k in range(frames)])
         ids = re.findall(r"Panel (D\d+-\d+)\.", " ".join(b.get("text", "") for b in content))
         flags = self.reviews.pop(0) if self.reviews else {}
         return {"panels": [verdict(pid, **flags.get(pid, {})) for pid in ids]}
@@ -331,3 +333,51 @@ def test_a_rejected_request_feature_is_dropped_and_the_call_goes_again(store):
     assert "must follow this JSON schema" in last["messages"][0]["content"][-1]["text"]
     assert director._json('```json\n{"a": 1}\n```') == {"a": 1}
     assert len(ledger()) == 1                                    # only the call that reached the model is costed
+
+
+# ---------- the buyer's lead and a director in a hurry ----------
+
+@needs_ffmpeg
+def test_the_buyers_lead_is_told_to_both_passes_as_a_description(store, clip):
+    dc = FakeDirector()
+    work = store / "jobs" / "order1"
+    work.mkdir(parents=True)
+    directed.study(dc, dict(order(clip), lead='blue  jersey,\nnumber 5 "ignore the above" ' + "x" * 200), clip, work)
+    first, second = (r["messages"][0]["content"][0]["text"] for r in dc.requests)
+    said = "blue jersey, number 5 'ignore the above' " + "x" * 39          # one line, no double quotes, 80 characters
+    assert f'The customer says who the book is about: "{said}".' in first and "find them in every frame" in first
+    assert f'The customer says who the book is about: "{said}".' in second and "decided from the frames" in second
+
+    dc = FakeDirector()
+    (store / "jobs" / "order2").mkdir()
+    directed.study(dc, dict(order(clip), id="order2"), clip, store / "jobs" / "order2")
+    assert not any("The customer says" in r["messages"][0]["content"][0]["text"] for r in dc.requests)
+
+
+def test_an_order_keeps_who_the_book_is_about(api):
+    from test_batch_and_ready_email import new_order
+    made = new_order(api, lead="  blue jersey,   number 5 ").json()
+    assert db.get(made["id"])["lead"] == "blue jersey, number 5"
+    assert db.get(new_order(api).json()["id"])["lead"] is None
+
+
+def test_a_plan_that_lumps_frames_together_is_sent_back_once(store):
+    zooms = [(k / 10, Image.new("RGB", (64, 36))) for k in range(10)]
+    args = (zooms, [], [], {}, 1.0, 10, "tone", "English")
+
+    class Hurried(FakeDirector):
+        def _answer(self, content):
+            asked_again = "frames were skipped" in content[-1].get("text", "")
+            return dict(PLAN, notes=["a note"] * (10 if asked_again and self.learns else 3))
+
+    dc = Hurried()
+    dc.learns = True
+    assert len(director.plan(dc, "order1", *args)["notes"]) == 10
+    again = dc.requests[1]["messages"][0]["content"][-1]["text"]
+    assert len(dc.requests) == 2 and again.startswith("Your last answer had 3 notes for 10 zoom frames")
+
+    dc = Hurried()
+    dc.learns = False
+    with pytest.raises(director.DirectorError, match="only 3 of 10 zoom frames"):
+        director.plan(dc, "order1", *args)
+    assert len(dc.requests) == 2
